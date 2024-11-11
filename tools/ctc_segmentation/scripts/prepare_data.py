@@ -30,6 +30,8 @@ from nemo.collections.asr.models.ctc_models import EncDecCTCModel
 from nemo.collections.asr.models.hybrid_rnnt_ctc_models import EncDecHybridRNNTCTCModel
 from nemo.utils import model_utils
 
+from hazm import Normalizer as HazmNormalizer
+
 try:
     from nemo_text_processing.text_normalization.normalize import Normalizer
 
@@ -49,7 +51,7 @@ parser.add_argument(
     "--language",
     type=str,
     default="en",
-    choices=["en", "ru", "de", "es", 'other'],
+    choices=["en", "ru", "de", "es", "fa", 'other'],
     help='Add target language based on the num2words list of supported languages',
 )
 parser.add_argument(
@@ -153,7 +155,10 @@ def split_text(
     )
 
     # end of quoted speech - to be able to split sentences by full stop
-    transcript = re.sub(r"([\.\?\!])([\"\'”])", r"\g<2>\g<1> ", transcript)
+    if language == 'fa':
+        transcript = re.sub(r"([\.\?\!\؟])([\"\'”«»])", r"\g<2>\g<1> ", transcript)
+    else:
+        transcript = re.sub(r"([\.\?\!])([\"\'”])", r"\g<2>\g<1> ", transcript)
 
     # remove extra space
     transcript = re.sub(r" +", " ", transcript)
@@ -168,6 +173,9 @@ def split_text(
     if language == "ru":
         lower_case_unicode = '\u0430-\u04FF'
         upper_case_unicode = '\u0410-\u042F'
+    elif language == "fa":
+        lower_case_unicode = '\u0600-\u06FF'  # Arabic and Persian characters
+        upper_case_unicode = ''  # Persian doesn't have uppercase letters
     elif language not in ["ru", "en"]:
         print(f"Consider using {language} unicode letters for better sentence split.")
 
@@ -177,7 +185,10 @@ def split_text(
         transcript = transcript.replace(match, match.replace('. ', '.'))
 
     # find phrases in quotes
-    with_quotes = re.finditer(r'“[A-Za-z ?]+.*?”', transcript)
+    if language == 'fa':
+        with_quotes = re.finditer(r'«[^»]+»', transcript)
+    else:
+        with_quotes = re.finditer(r'“[A-Za-z ?]+.*?”', transcript)
     sentences = []
     last_idx = 0
     for m in with_quotes:
@@ -191,7 +202,10 @@ def split_text(
     sentences = [s.strip() for s in sentences if s.strip()]
 
     # Read and split transcript by utterance (roughly, sentences)
-    split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
+    if language == 'fa':
+        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\؟|\?”|\!”)\s"
+    else:
+        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
 
     new_sentences = []
     for sent in sentences:
@@ -293,6 +307,10 @@ def split_text(
             raise ValueError("Normalization failed, number of sentences does not match.")
         else:
             sentences = sentences_norm
+    
+    if language == "fa":
+        normalizer = HazmNormalizer()
+        sentences = [normalizer.normalize(s) for s in sentences]
 
     sentences = '\n'.join(sentences)
 
