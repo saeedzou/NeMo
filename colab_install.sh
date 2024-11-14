@@ -4,7 +4,7 @@ BRANCH="main"
 NEMO_DIR_PATH="NeMo"
 # Install necessary Python packages
 echo "Installing Python packages..."
-python -m pip install nemo_toolkit['all']
+python -m pip install nemo_toolkit['asr']
 python -m pip install wget
 python -m pip install sox
 python -m pip install huggingface_hub==0.23.2
