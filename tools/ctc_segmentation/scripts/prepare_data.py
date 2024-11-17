@@ -143,11 +143,10 @@ def split_text(
     print(f"Splitting text in {in_file} into sentences.")
     with open(in_file, "r") as f:
         transcript = f.read()
-
+    transcript = re.sub(r'^\s*\n', '', transcript, flags=re.MULTILINE)
     # remove some symbols for better split into sentences
     transcript = (
-        transcript.replace("\n", " ")
-        .replace("\t", " ")
+        transcript.replace("\t", " ")
         .replace("…", "...")
         .replace("\\", " ")
         .replace("--", " -- ")
@@ -203,9 +202,9 @@ def split_text(
 
     # Read and split transcript by utterance (roughly, sentences)
     if language == 'fa':
-        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\؟|\?”|\!”)\s"
+        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\؟|\?”|\!”|\n)\s?"
     else:
-        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
+        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”|\n)\s?"
 
     new_sentences = []
     for sent in sentences:
