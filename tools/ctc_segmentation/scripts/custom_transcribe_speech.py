@@ -40,6 +40,7 @@ class TranscriptionConfig:
 def write_transcriptions_to_disk(output_filename, transcriptions, filepaths):
     output_data = [{
         'audio_filepath': filepaths[idx]['audio_filepath'],
+        'duration': filepaths[idx]['duration'],
         'text': filepaths[idx]['text'],
         'text_no_preprocessing': filepaths[idx]['text_no_preprocessing'],
         'text_normalized': filepaths[idx]['text_normalized'],
