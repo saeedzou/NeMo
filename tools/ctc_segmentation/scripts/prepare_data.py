@@ -22,6 +22,7 @@ import regex
 from joblib import Parallel, delayed
 from normalization_helpers import LATIN_TO_RU, RU_ABBREVIATIONS
 from num2words import num2words
+import pysrt
 from sox import Transformer
 from tqdm import tqdm
 
@@ -103,6 +104,117 @@ def process_audio(
     except Exception as e:
         print(f'{in_file} skipped - {e}')
 
+def process_subtitle_file(
+    in_file: str,
+    out_file: str,
+    language="en",
+    use_nemo_normalization: bool = False,
+    vocabulary: Optional[list] = None,
+):
+    """
+    Process subtitle file. Since subtitles are already split into utterances,
+    we only need to clean and normalize them.
+
+    Args:
+        in_file: path to the subtitle file (e.g., .srt)
+        out_file: path to the output subtitle file
+        language: text language
+        use_nemo_normalization: Set to True to use NeMo normalization tool to convert numbers from written to spoken
+            format
+        n_jobs (if use_nemo_normalization=True): maximum number of concurrently running jobs.
+        batch_size (if use_nemo_normalization=True): Number of examples for each process
+    """
+    print(f"Processing subtitle file {in_file}.")
+
+    # Read subtitle file (example using pysrt for .srt files)
+    subs = pysrt.open(in_file, encoding='utf-8')
+
+    # Step 1: Join all subtitles into a single text block
+    text = "\n".join(sub.text for sub in subs)
+    text = (
+            text.replace("\t", " ")
+            .replace("…", "...")
+            .replace("\\", " ")
+            .replace("--", " -- ")
+            .replace(". . .", "...")
+        )
+    text = re.sub(r" +", " ", text)  # Remove extra spaces
+
+    # Step 2: Vocabulary Symbols Processing
+    if vocabulary:
+        vocabulary_symbols = []
+        for x in vocabulary:
+            if x != "<unk>":
+                # For BPE models, split vocabulary words and remove specific tokens
+                vocabulary_symbols.extend([x for x in x.replace("##", "").replace("▁", "")])
+        vocabulary_symbols = list(set(vocabulary_symbols))
+        vocabulary_symbols += [x.upper() for x in vocabulary_symbols]
+
+        # Step 2: Ensure no utterances with only OOV symbols
+        vocab_no_space_with_digits = set(vocabulary_symbols + [str(i) for i in range(10)])
+        if " " in vocab_no_space_with_digits:
+            vocab_no_space_with_digits.remove(" ")
+
+    sentences = text.split("\n")
+    sentences = [
+        s.strip()
+        for s in sentences
+        if len(vocab_no_space_with_digits.intersection(set(s.lower()))) > 0 and s.strip()
+    ]
+    text = "\n".join(sentences)
+    
+    with open(out_file.replace('.txt', '_with_punct.txt'), 'w', encoding='utf-8') as f:
+        f.write(text)
+    # Step 3: Normalize text function
+    def normalize_text(text):
+        # Normalize the text (lowercase, remove unwanted characters, etc.)
+        # Apply NeMo normalization if needed
+        if language == "en" and use_nemo_normalization:
+            if not NEMO_NORMALIZATION_AVAILABLE:
+                raise ValueError("NeMo normalization tool is not installed.")
+            normalizer = Normalizer(input_case="cased")
+            text = normalizer.normalize(text)
+        elif language == "fa":
+            normalizer = HazmNormalizer()
+            text = normalizer.normalize(text)
+
+        # Convert numbers to words using num2words
+        try:
+            p = re.compile("\d+")
+            new_text = ""
+            match_end = 0
+            for i, m in enumerate(p.finditer(text)):
+                match = m.group()
+                match_start = m.start()
+                if i == 0:
+                    new_text = text[:match_start]
+                else:
+                    new_text += text[match_end:match_start]
+                match_end = m.end()
+                new_text += text[match_start:match_end].replace(match, num2words(match, lang=language))
+            new_text += text[match_end:]
+            text = new_text
+        except NotImplementedError:
+            print(f"{language} might be missing in 'num2words' package.")
+            raise
+        return text
+
+    # Step 4: Apply normalization to the entire block of text
+    text = normalize_text(text)
+    text = re.sub(r' +', ' ', text)
+
+    with open(out_file.replace('.txt', '_with_punct_normalized.txt'), 'w', encoding='utf-8') as f:
+        f.write(text)
+
+    # Step 5: Remove unwanted symbols from sentences
+    symbols_to_remove = ''.join(set(text).difference(set(vocabulary_symbols + ["\n", " "])))
+    text = text.translate(''.maketrans(symbols_to_remove, len(symbols_to_remove) * " "))
+
+    text = re.sub(r' +', ' ', text)
+    
+    # save additional files like normalized text
+    with open(out_file, 'w', encoding='utf-8') as f:
+        f.write(text)
 
 def split_text(
     in_file: str,
@@ -389,6 +501,7 @@ if __name__ == "__main__":
 
         if os.path.isdir(args.in_text):
             text_files = glob(f"{args.in_text}/*.txt")
+            srt_files = glob(f"{args.in_text}/*.srt")
         else:
             text_files.append(args.in_text)
         for text in text_files:
@@ -406,6 +519,18 @@ if __name__ == "__main__":
                 n_jobs=args.n_jobs,
                 batch_size=args.batch_size,
             )
+        for srt in srt_files:
+            base_name = os.path.basename(srt)[:-4]
+            out_text_file = os.path.join(args.output_dir, base_name + ".txt")
+            # Process subtitle files
+            process_subtitle_file(
+                srt, 
+                out_text_file,
+                language=args.language,
+                use_nemo_normalization=args.use_nemo_normalization,
+                vocabulary=vocabulary,
+            )
+                
         print(f"Processed text saved at {args.output_dir}")
 
     if args.audio_dir:
