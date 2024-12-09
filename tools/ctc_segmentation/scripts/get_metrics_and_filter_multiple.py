@@ -114,13 +114,13 @@ def filter_manifests(manifests, manifest_with_metrics_filtered):
                     combined_data[filepath] = []
 
                 # Add model name to the entry
-                item["model_name"] = f"model_{manifest_idx + 1}"
+                item["model_name"] = os.path.basename(manifest_path).split("manifest_transcribed_")[-1].split("_metrics.json")[0]
                 combined_data[filepath].append(item)
 
     filtered_data = []
     for filepath, entries in combined_data.items():
         # Check if the sample passes thresholds in all manifests
-        passes_all = all(
+        passes_any = any(
             entry["CER"] <= args.max_cer
             and entry["WER"] <= args.max_wer
             and entry["len_diff_ratio"] <= args.max_len_diff_ratio
@@ -130,7 +130,7 @@ def filter_manifests(manifests, manifest_with_metrics_filtered):
             and entry["duration"] > args.min_duration
             for entry in entries
         )
-        if passes_all:
+        if passes_any:
             # Use the entry with the lowest CER as the representative
             best_entry = min(entries, key=lambda x: x["CER"])
             filtered_data.append(best_entry)
