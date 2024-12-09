@@ -20,7 +20,7 @@ class TranscriptionConfig:
     """
 
     model_name: str = "masoudmzb/wav2vec2-xlsr-multilingual-53-fa"  # Pretrained model name
-    model_type: str = "wav2vec2" # Either "whisper" or "wav2vec2"
+    model_type: str = 'wav2vec2'
     audio_dir: Optional[str] = None  # Path to a directory containing audio files
     dataset_manifest: Optional[str] = None  # Path to dataset's JSON manifest
     output_filename: Optional[str] = None  # Path to output file for transcriptions
@@ -153,6 +153,13 @@ def main(cfg: TranscriptionConfig):
 
     if is_dataclass(cfg):
         cfg = OmegaConf.structured(cfg)
+
+    if 'wav2vec2' in cfg.model_name.lower():
+        cfg.model_type = 'wav2vec2'
+    elif 'whisper' in cfg.model_name.lower():
+        cfg.model_type = 'whisper'
+    else:
+        raise ValueError(f'model should be whisper or wav2vec2')
 
     model, processor = load_model_and_processor(cfg)
     
