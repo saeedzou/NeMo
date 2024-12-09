@@ -45,6 +45,10 @@ IFS=' ' read -r -a MODEL_PATHS <<< "$MODEL_NAME_OR_PATH"
 
 for MODEL in "${MODEL_PATHS[@]}"; do
   MODEL_LOWERCASE="${MODEL,,}" # Convert model name to lowercase for easier checks
+  CURRENT_BATCH_SIZE=$BATCH_SIZE
+  if [[ $MODEL_LOWERCASE == *"wav2vec2"* ]]; then
+    CURRENT_BATCH_SIZE=1  # Change batch size for whisper models
+  fi
   
   if [[ $MODEL_LOWERCASE == *".nemo" ]] || [[ $MODEL_LOWERCASE == *"nvidia"* ]] || [[ $MODEL_LOWERCASE == *"nemo"* ]]; then
     if [[ ${MODEL_NAME_OR_PATH,,} == *".nemo" ]]; then
@@ -70,7 +74,7 @@ for MODEL in "${MODEL_PATHS[@]}"; do
     model_name="$MODEL" \
     dataset_manifest="$MANIFEST" \
     output_filename="$OUT_MANIFEST" \
-    batch_size=1 || exit
+    batch_size="${CURRENT_BATCH_SIZE}" || exit
   fi
 
   MANIFESTS_TO_PROCESS+=("$OUT_MANIFEST")
