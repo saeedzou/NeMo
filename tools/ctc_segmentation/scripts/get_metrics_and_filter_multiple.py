@@ -5,8 +5,12 @@ import os
 import editdistance
 from joblib import Parallel, delayed
 from tqdm import tqdm
+from glob import glob
 
 from nemo.utils import logging
+
+from mutagen import File  # Importing mutagen for audio file duration calculation
+
 
 parser = argparse.ArgumentParser("Calculate metrics and filters out samples based on thresholds")
 parser.add_argument(
@@ -60,6 +64,7 @@ def _calculate(line: dict, edge_len: int):
         len_diff_ratio - ratio between reference text length and predicted text length with respect to
             the reference text length (length measured in number of characters)
     """
+    logging.debug(f"Calculating metrics for line with audio file: {line.get('audio_filepath')}")
     eps = 1e-9
 
     text = line["text"].split()
@@ -80,6 +85,7 @@ def _calculate(line: dict, edge_len: int):
 
 def get_metrics(manifest, manifest_out):
     """Calculate metrics for sample in manifest and saves the results to manifest_out"""
+    logging.info(f"Calculating metrics for manifest: {manifest}")
     with open(manifest, "r") as f:
         lines = f.readlines()
 
@@ -92,7 +98,7 @@ def get_metrics(manifest, manifest_out):
     logging.info(f"Metrics save at {manifest_out}")
 
 
-def filter_manifests(manifests, manifest_with_metrics_filtered):
+def filter_manifests(manifests, manifest_with_metrics_filtered, original_duration):
     """
     Filters samples based on criteria across multiple manifests.
     Retains only samples that pass the thresholds in ALL manifests.
@@ -101,14 +107,20 @@ def filter_manifests(manifests, manifest_with_metrics_filtered):
     Args:
         manifests: List of manifest file paths.
     """
+    logging.info(f"Filtering manifests: {manifests}")
     combined_data = {}
+    segmented_duration = 0
 
     # Load and combine data from all manifests
     for manifest_idx, manifest_path in enumerate(manifests):
+        logging.info(f"Processing manifest: {manifest_path}")
         with open(manifest_path, "r") as f:
             for line in f:
                 item = json.loads(line)
                 filepath = item["audio_filepath"]
+                if manifest_idx == 0:
+                    duration = item["duration"]
+                    segmented_duration += duration
 
                 if filepath not in combined_data:
                     combined_data[filepath] = []
@@ -118,6 +130,7 @@ def filter_manifests(manifests, manifest_with_metrics_filtered):
                 combined_data[filepath].append(item)
 
     filtered_data = []
+    retained_duration = 0
     for filepath, entries in combined_data.items():
         # Check if the sample passes thresholds in all manifests
         passes_any = any(
@@ -133,30 +146,71 @@ def filter_manifests(manifests, manifest_with_metrics_filtered):
         if passes_any:
             # Use the entry with the lowest CER as the representative
             best_entry = min(entries, key=lambda x: x["CER"])
+            retained_duration += best_entry["duration"]
             filtered_data.append(best_entry)
 
+    logging.info("-" * 50)
+    logging.info("Threshold values:")
+    logging.info(f"max WER, %: {args.max_wer}")
+    logging.info(f"max CER, %: {args.max_cer}")
+    logging.info(f"max edge CER, %: {args.max_edge_cer}")
+    logging.info(f"max Word len diff: {args.max_len_diff_ratio}")
+    logging.info(f"max Duration, s: {args.max_duration}")
+    logging.info("-" * 50)
+
+    retained_duration /= 60  # Convert to minutes
+    segmented_duration /= 60
+    original_duration /= 60
+    logging.info(f"Original audio duration: {round(original_duration, 2)} min")
+    logging.info(
+        f"Segmented duration: {round(segmented_duration, 2)} min "
+        f"({round(100 * segmented_duration / original_duration, 2)}% of original audio)"
+    )
+    logging.info(
+        f"Retained {round(retained_duration, 2)} min "
+        f"({round(100 * retained_duration / original_duration, 2)}% of original or "
+        f"{round(100 * retained_duration / segmented_duration, 2)}% of segmented audio)."
+    )
+    logging.info(f"Filtered data saved to {manifest_with_metrics_filtered}")
     with open(manifest_with_metrics_filtered, "w") as f_out:
         for item in filtered_data:
             f_out.write(json.dumps(item) + "\n")
 
     logging.info(f"Filtered data saved to {manifest_with_metrics_filtered}")
-
-
+    
+def calculate_original_duration(audio_dir):
+    logging.info(f"Calculating original audio duration from directory: {audio_dir}")
+    total_duration = 0
+    if audio_dir:
+        audio_files = glob(f"{os.path.abspath(audio_dir)}/*")
+        for audio in audio_files:
+            try:
+                audio_file = File(audio)
+                if audio_file is not None and audio_file.info.length:
+                    total_duration += audio_file.info.length
+            except Exception as e:
+                logging.warning(f"Skipping {audio} due to error: {e}")
+    return total_duration
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     manifests = args.manifests.split()
-    # Generate metrics for all manifests
+    logging.info(f"Arguments: {args}")
+    metric_manifests = []
+
+    original_duration = calculate_original_duration(args.audio_dir)
+
     if not args.only_filter:
-        metric_manifests = []
         for manifest in manifests:
             manifest_with_metrics = manifest.replace(".json", "_metrics.json")
+            logging.info(f"Generating metrics for {manifest}")
             get_metrics(manifest, manifest_with_metrics)
             metric_manifests.append(manifest_with_metrics)
     else:
         metric_manifests = manifests
 
-    # Filter samples based on thresholds
-    manifest_with_metrics_filtered = os.path.join(os.path.dirname(manifests[0]), 'manifest_transcribed_metrics_filtered.json')
-    filter_manifests(metric_manifests, manifest_with_metrics_filtered)
+    manifest_with_metrics_filtered = os.path.join(
+        os.path.dirname(manifests[0]), "manifest_transcribed_metrics_filtered.json"
+    )
+    filter_manifests(metric_manifests, manifest_with_metrics_filtered, original_duration)
