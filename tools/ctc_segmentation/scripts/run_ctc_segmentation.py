@@ -112,7 +112,7 @@ if __name__ == "__main__":
     output_dir = Path(args.output_dir)
 
     if os.path.isdir(data):
-        audio_paths = data.glob("*.wav")
+        audio_paths = list(data.glob("*.wav"))  # Convert generator to list
         data_dir = data
     else:
         audio_paths = [Path(data)]
@@ -126,8 +126,9 @@ if __name__ == "__main__":
     os.makedirs(segments_dir, exist_ok=True)
 
     index_duration = None
-    for path_audio in audio_paths:
-        logging.info(f"Processing {path_audio.name}...")
+    pbar = tqdm(audio_paths, desc='Extracting CTC log probs for audio files', total=len(audio_paths))
+    for path_audio in pbar:
+        pbar.set_description(f"Processing {path_audio.name}...")
         transcript_file = os.path.join(data_dir, path_audio.name.replace(".wav", ".txt"))
         segment_file = os.path.join(
             segments_dir, f"{args.window_len}_" + path_audio.name.replace(".wav", "_segments.txt")
@@ -157,7 +158,7 @@ if __name__ == "__main__":
             # Process each partition
             for start, end in partitions["partitions"]:
                 audio_chunk = signal[start:end]
-                hypotheses = asr_model.transcribe([audio_chunk], batch_size=1, return_hypotheses=True)
+                hypotheses = asr_model.transcribe([audio_chunk], batch_size=1, return_hypotheses=True, verbose=False)
                 # if hypotheses form a tuple (from Hybrid model), extract just "best" hypothesis
                 if type(hypotheses) == tuple and len(hypotheses) == 2:
                     hypotheses = hypotheses[0]

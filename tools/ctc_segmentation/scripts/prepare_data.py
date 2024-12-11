@@ -80,6 +80,9 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size", type=int, default=100, help="Batch size for NeMo Normalization tool.",
 )
+parser.add_argument(
+    "--tqdm", type=str, default='default', help="whether to use tqdm for notebook or default for terminal. can be notebook or default",
+)
 
 
 def process_audio(
@@ -252,7 +255,6 @@ def split_text(
                 (n_cpus + 1 + n_jobs) are used. Thus for n_jobs = -2, all CPUs but one are used.
         batch_size (if use_nemo_normalization=True): Number of examples for each process
     """
-    print(f"Splitting text in {in_file} into sentences.")
     with open(in_file, "r") as f:
         transcript = f.read()
     transcript = re.sub(r'^\s*\n', '', transcript, flags=re.MULTILINE)
@@ -504,7 +506,9 @@ if __name__ == "__main__":
             srt_files = glob(f"{args.in_text}/*.srt")
         else:
             text_files.append(args.in_text)
-        for text in text_files:
+        pbar = tqdm(text_files, desc="Processing text files")
+        for text in pbar:
+            pbar.set_description(f"Currently processing: {text}")
             base_name = os.path.basename(text)[:-4]
             out_text_file = os.path.join(args.output_dir, base_name + ".txt")
 
