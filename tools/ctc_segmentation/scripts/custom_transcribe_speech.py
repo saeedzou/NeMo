@@ -5,6 +5,7 @@ from dataclasses import dataclass, is_dataclass
 import torch
 import torchaudio
 from transformers import WhisperForConditionalGeneration, WhisperProcessor
+from hezar.models import Model
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from nemo.collections.asr.parts.utils.eval_utils import cal_write_wer
 from nemo.utils import logging
@@ -56,7 +57,10 @@ def write_transcriptions_to_disk(output_filename, transcriptions, filepaths):
 
 # Load Whisper model and processor
 def load_model_and_processor(cfg: TranscriptionConfig):
-    if cfg.model_type == "whisper":
+    if cfg.model_type == "hezar":
+        model = Model.load(cfg.model_name)
+        processor = None
+    elif cfg.model_type == "whisper":
         model = WhisperForConditionalGeneration.from_pretrained(cfg.model_name)
         processor = WhisperProcessor.from_pretrained(cfg.model_name)
     elif cfg.model_type == "wav2vec2":
@@ -69,6 +73,8 @@ def load_model_and_processor(cfg: TranscriptionConfig):
 
 # This function processes a batch of audio files in parallel, improving efficiency
 def process_audio_files_batch(batch_files, processor, model_type):
+    if model_type == 'hezar':
+        return None
     audio_data_list = []
     for audio_file in batch_files:
         audio_data, sampling_rate = torchaudio.load(audio_file, normalize=True)
@@ -111,11 +117,13 @@ def transcribe_audio(cfg: TranscriptionConfig, model, processor, device, model_t
         batch_files = [x['audio_filepath'] for x in filepaths[i:i + cfg.batch_size]]
         
         # Process the batch of audio files
-        audio_input = process_audio_files_batch(batch_files, processor, model_type).to(device)
+        audio_input = process_audio_files_batch(batch_files, processor, model_type).to(device) if model_type != 'hezar' else None
         
         # Start transcription
         with torch.no_grad():
-            if model_type == "whisper":
+            if model_type == 'hezar':
+                transcriptions_batch = [x['text'] for x in model.predict(batch_files)]
+            elif model_type == "whisper":
                 # Whisper-specific transcription logic
                 generated_ids = model.generate(audio_input, forced_decoder_ids=forced_decoder_ids)
                 transcriptions_batch = processor.batch_decode(generated_ids, skip_special_tokens=True)
@@ -156,6 +164,8 @@ def main(cfg: TranscriptionConfig):
 
     if 'wav2vec2' in cfg.model_name.lower():
         cfg.model_type = 'wav2vec2'
+    elif 'hezar' in cfg.model_name.lower():
+        cfg.model_type = 'hezar'
     elif 'whisper' in cfg.model_name.lower():
         cfg.model_type = 'whisper'
     else:
