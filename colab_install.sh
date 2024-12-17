@@ -12,6 +12,7 @@ python -m pip install pytorch-lightning==2.2.1
 python -m pip install lightning
 python -m pip install pysrt
 python -m pip install mutagen
+python -m pip install hezar
 wget "https://raw.githubusercontent.com/saeedzou/NeMo/main/tools/ctc_segmentation/requirements.txt" -O requirements.txt
 python -m pip install -r requirements.txt
 echo "Installation completed."
