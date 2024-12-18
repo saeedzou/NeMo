@@ -110,7 +110,7 @@ def process_with_vosk(audio_file, cfg: TranscriptionConfig):
 
 # This function processes a batch of audio files in parallel, improving efficiency
 def process_audio_files_batch(batch_files, processor, model_type):
-    if model_type == 'hezar' or 'vosk':
+    if model_type == 'hezar' or model_type == 'vosk':
         return None
     audio_data_list = []
     for audio_file in batch_files:
@@ -152,11 +152,11 @@ def transcribe_audio(cfg: TranscriptionConfig, model, processor, device, model_t
     transcriptions = []
     for i in tqdm(range(0, len(filepaths), cfg.batch_size)):
         batch_files = [x['audio_filepath'] for x in filepaths[i:i + cfg.batch_size]]
-        print(batch_files)
         
         # Process the batch of audio files
-        audio_input = process_audio_files_batch(batch_files, processor, model_type).to(device) if model_type not in ['hezar', 'vosk'] else None
-        
+        audio_input = None
+        if model_type in ['wav2vec2', 'whisper']:
+            audio_input = process_audio_files_batch(batch_files, processor, model_type).to(device)
         # Start transcription
         with torch.no_grad():
             if model_type == 'hezar':
@@ -197,7 +197,6 @@ def transcribe_audio(cfg: TranscriptionConfig, model, processor, device, model_t
 # Main entry point
 @hydra_runner(config_name="TranscriptionConfig", schema=TranscriptionConfig)
 def main(cfg: TranscriptionConfig):
-    logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
 
     if is_dataclass(cfg):
         cfg = OmegaConf.structured(cfg)
@@ -213,6 +212,7 @@ def main(cfg: TranscriptionConfig):
     else:
         raise ValueError(f'model should be whisper/wav2vec2/hezar/whisper/vosk')
 
+    logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
     model, processor = load_model_and_processor(cfg)
     
     # Setup device (CUDA or CPU)
