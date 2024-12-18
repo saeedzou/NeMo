@@ -13,6 +13,7 @@ python -m pip install lightning
 python -m pip install pysrt
 python -m pip install mutagen
 python -m pip install hezar
+python -m pip install vosk
 wget "https://raw.githubusercontent.com/saeedzou/NeMo/main/tools/ctc_segmentation/requirements.txt" -O requirements.txt
 python -m pip install -r requirements.txt
 echo "Installation completed."

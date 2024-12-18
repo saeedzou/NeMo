@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from typing import Optional
 from dataclasses import dataclass, is_dataclass
 import torch
@@ -37,6 +38,8 @@ class TranscriptionConfig:
     clean_groundtruth_text: bool = False
     langid: str = 'fa'
     use_cer: bool = True
+    vosk_cli_path: Optional[str] = "vosk-transcriber"  # Path to Vosk CLI executable
+    temp_output_file: str = "temp_transcription.txt"
 
 def write_transcriptions_to_disk(output_filename, transcriptions, filepaths):
     output_data = [{
@@ -66,14 +69,48 @@ def load_model_and_processor(cfg: TranscriptionConfig):
     elif cfg.model_type == "wav2vec2":
         model = Wav2Vec2ForCTC.from_pretrained(cfg.model_name)
         processor = Wav2Vec2Processor.from_pretrained(cfg.model_name)
+    elif cfg.model_type == "vosk":
+        model, processor = None, None
     else:
         raise ValueError(f"Unsupported model type: {cfg.model_type}")
     
     return model, processor
 
+def process_with_vosk(audio_file, cfg: TranscriptionConfig):
+    """Call Vosk CLI to transcribe the given audio file and save output to a temp file."""
+    command = [cfg.vosk_cli_path, 
+               '-l', cfg.langid, 
+               '-i', audio_file,
+               '--model-name', cfg.model_name,
+               '-o', cfg.temp_output_file,
+               '--log-level', 'error'] 
+    
+    try:
+        # Run the Vosk CLI command
+        subprocess.run(command, capture_output=True, text=True, check=True)
+        
+        # Read the transcription from the temporary output file
+        if os.path.exists(cfg.temp_output_file):
+            with open(cfg.temp_output_file, 'r') as file:
+                output_json = file.read()
+                return output_json  # Extract transcribed text
+        else:
+            logging.error(f"Temporary output file {cfg.temp_output_file} not found.")
+    
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Vosk CLI failed for {audio_file}: {e}")
+    except json.JSONDecodeError:
+        logging.error(f"Invalid JSON output in {cfg.temp_output_file}")
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(cfg.temp_output_file):
+            os.remove(cfg.temp_output_file)
+    
+    return ""
+
 # This function processes a batch of audio files in parallel, improving efficiency
 def process_audio_files_batch(batch_files, processor, model_type):
-    if model_type == 'hezar':
+    if model_type == 'hezar' or 'vosk':
         return None
     audio_data_list = []
     for audio_file in batch_files:
@@ -115,14 +152,17 @@ def transcribe_audio(cfg: TranscriptionConfig, model, processor, device, model_t
     transcriptions = []
     for i in tqdm(range(0, len(filepaths), cfg.batch_size)):
         batch_files = [x['audio_filepath'] for x in filepaths[i:i + cfg.batch_size]]
+        print(batch_files)
         
         # Process the batch of audio files
-        audio_input = process_audio_files_batch(batch_files, processor, model_type).to(device) if model_type != 'hezar' else None
+        audio_input = process_audio_files_batch(batch_files, processor, model_type).to(device) if model_type not in ['hezar', 'vosk'] else None
         
         # Start transcription
         with torch.no_grad():
             if model_type == 'hezar':
                 transcriptions_batch = [x['text'] for x in model.predict(batch_files)]
+            elif model_type == 'vosk':
+                transcriptions_batch = [process_with_vosk(batch_files[0], cfg)]
             elif model_type == "whisper":
                 # Whisper-specific transcription logic
                 generated_ids = model.generate(audio_input, forced_decoder_ids=forced_decoder_ids)
@@ -168,8 +208,10 @@ def main(cfg: TranscriptionConfig):
         cfg.model_type = 'hezar'
     elif 'whisper' in cfg.model_name.lower():
         cfg.model_type = 'whisper'
+    elif 'vosk' in cfg.model_name.lower():
+        cfg.model_type = 'vosk'
     else:
-        raise ValueError(f'model should be whisper or wav2vec2')
+        raise ValueError(f'model should be whisper/wav2vec2/hezar/whisper/vosk')
 
     model, processor = load_model_and_processor(cfg)
     
@@ -178,7 +220,8 @@ def main(cfg: TranscriptionConfig):
     if cfg.cuda is not None:
         device = torch.device(f"cuda:{cfg.cuda}")
     logging.info(f"Inference will be done on device: {device}")
-    model.to(device)
+    if model:
+        model.to(device)
     
     transcribe_audio(cfg, model, processor, device, cfg.model_type)
 

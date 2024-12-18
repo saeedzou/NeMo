@@ -49,6 +49,10 @@ for MODEL in "${MODEL_PATHS[@]}"; do
   if [[ $MODEL_LOWERCASE == *"wav2vec2"* ]]; then
     CURRENT_BATCH_SIZE=1  # Change batch size for whisper models
   fi
+
+  if [[ $MODEL_LOWERCASE == *"vosk"* ]]; then
+    CURRENT_BATCH_SIZE=1  # Change batch size for whisper models
+  fi
   
   if [[ $MODEL_LOWERCASE == *".nemo" ]] || [[ $MODEL_LOWERCASE == *"nvidia"* ]] || [[ $MODEL_LOWERCASE == *"nemo"* ]]; then
     if [[ ${MODEL_NAME_OR_PATH,,} == *".nemo" ]]; then
