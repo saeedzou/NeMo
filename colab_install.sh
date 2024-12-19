@@ -16,5 +16,7 @@ python -m pip install hezar
 python -m pip install vosk
 wget "https://raw.githubusercontent.com/saeedzou/NeMo/main/tools/ctc_segmentation/requirements.txt" -O requirements.txt
 python -m pip install -r requirements.txt
-python -m pip install git+https://github.com/saeedzou/ParsNorm.git
+# Clone and install ParsNorm
+git clone https://github.com/saeedzou/ParsNorm.git
+cd ParsNorm && pip install -e . && pip install -r requirements.txt
 echo "Installation completed."
