@@ -32,6 +32,7 @@ from nemo.collections.asr.models.hybrid_rnnt_ctc_models import EncDecHybridRNNTC
 from nemo.utils import model_utils
 
 from parsnorm import ParsNorm
+from hazm import POSTagger, word_tokenize
 
 
 try:
@@ -72,6 +73,9 @@ parser.add_argument(
     help="Additional symbols to use for \
     sentence split if eos sentence split resulted in sequence longer than --max_length. "
     "Use '|' as a separator between symbols, for example: ';|:'. Use '\s' to split by space.",
+)
+parser.add_argument(
+    "--split_on_quotes", type=int, default=False, help="Whether to split on quotes or not. «» is used for Persian"
 )
 parser.add_argument(
     "--use_nemo_normalization",
@@ -534,6 +538,7 @@ if __name__ == "__main__":
                 max_length=args.max_length,
                 additional_split_symbols=args.additional_split_symbols,
                 use_nemo_normalization=args.use_nemo_normalization,
+                split_on_quotes=args.split_on_quotes,
                 n_jobs=args.n_jobs,
                 batch_size=args.batch_size,
             )
