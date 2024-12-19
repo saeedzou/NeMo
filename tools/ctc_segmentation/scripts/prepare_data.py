@@ -423,12 +423,18 @@ def split_text(
     sentences = [s.strip() for s in sentences if s.strip()]
 
     if split_on_verbs:
-        def split_sentence_by_verbs(text, pos_tagger, word_min_threshold):
+        def split_sentence_by_verbs(text, tagger, word_tokenize, word_min_threshold):
             tokens = word_tokenize(text)
-            tagged_tokens = pos_tagger.tag(tokens)
-            verb_indices = [i for i, (_, pos) in enumerate(tagged_tokens) if pos == 'VERB']
+            tagged_tokens = tagger.tag(tokens)
+            verb_indices = [
+                i + 1 if (i + 1 < len(tagged_tokens) and tagged_tokens[i + 1][1] == 'PUNCT') else i
+                for i, (_, pos) in enumerate(tagged_tokens)
+                if pos == 'VERB'
+            ]
+     
             if not verb_indices:
                 return [text]
+       
             start_idx = 0
             result = []
             for idx in verb_indices:
@@ -438,14 +444,22 @@ def split_text(
                     result.append(" ".join(split))
                     start_idx = idx + 1
 
-                if start_idx < len(tokens):
-                    result.append(' '.join(tokens[start_idx:]))
+            if start_idx < len(tokens):
+                last_chunk = tokens[start_idx:]
+                # Check if the last chunk is shorter than the threshold
+                if len(last_chunk) < word_min_threshold and result:
+                    # Merge with the previous chunk
+                    result[-1] += " " + " ".join(last_chunk)
+                else:
+                    # Add the last chunk as a new sentence
+                    result.append(" ".join(last_chunk))
+            
             return result
 
         new_sentences = []
         for sentence in sentences:
             if len(sentence) > split_on_verbs_min_words:
-                new_sentences.append(split_sentence_by_verbs(sentence, pos_tagger, split_on_verbs_min_words))
+                new_sentences.extend(split_sentence_by_verbs(sentence, pos_tagger, split_on_verbs_min_words))
         sentences = [s.strip() for s in new_sentences if s.strip()]
 
     # save split text with original punctuation and case
@@ -527,9 +541,12 @@ def split_text(
 if __name__ == "__main__":
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
+    scripts_dir = os.path.dirname(os.path.abspath(__file__))
 
     text_files = []
     if args.in_text:
+        if args.split_on_verbs:
+            tagger = POSTagger(model='pos_tagger.model')
         if args.model is None:
             raise ValueError(f"ASR model must be provided to extract vocabulary for text processing")
         elif os.path.exists(args.model):
@@ -568,11 +585,11 @@ if __name__ == "__main__":
             pbar.set_description(f"Currently processing: {text}")
             base_name = os.path.basename(text)[:-4]
             out_text_file = os.path.join(args.output_dir, base_name + ".txt")
-            tagger = POSTagger(model='models/pos_tagger.model')
+            
             split_text(
                 text,
                 out_text_file,
-                pos_tagger=tagger
+                pos_tagger=tagger,
                 vocabulary=vocabulary,
                 language=args.language,
                 max_length=args.max_length,
