@@ -78,6 +78,15 @@ parser.add_argument(
     "--split_on_quotes", type=bool, default=False, help="Whether to split on quotes or not. «» is used for Persian"
 )
 parser.add_argument(
+    "--split_on_verbs", type=bool, default=True, help="Whether to split more on verbs or not"
+)
+parser.add_argument(
+    "--split_on_verbs_min_words", type=int, default=5, help="The minimum number of words available for the sentence to be split"
+)
+parser.add_argument(
+    "--split_on_verbs_max_words", type=int, default=20, help="The word threshold to run splitting on verbs"
+)
+parser.add_argument(
     "--use_nemo_normalization",
     action="store_true",
     help="Set to True to use NeMo Normalization tool to convert numbers from written to spoken format.",
@@ -233,12 +242,16 @@ def split_text(
     in_file: str,
     out_file: str,
     vocabulary: List[str],
+    pos_tagger,
     language="en",
     remove_brackets: bool = True,
     do_lower_case: bool = True,
     max_length: bool = 100,
     additional_split_symbols: bool = None,
     split_on_quotes: bool = False,
+    split_on_verbs: bool = True,
+    split_on_verbs_min_words: int = 5,
+    split_on_verbs_max_words: int = 20,
     use_nemo_normalization: bool = False,
     n_jobs: Optional[int] = 1,
     batch_size: Optional[int] = 1.0,
@@ -409,6 +422,32 @@ def split_text(
             sentences.append(" ".join(sent[i : i + max_length]))
     sentences = [s.strip() for s in sentences if s.strip()]
 
+    if split_on_verbs:
+        def split_sentence_by_verbs(text, pos_tagger, word_min_threshold):
+            tokens = word_tokenize(text)
+            tagged_tokens = pos_tagger.tag(tokens)
+            verb_indices = [i for i, (_, pos) in enumerate(tagged_tokens) if pos == 'VERB']
+            if not verb_indices:
+                return [text]
+            start_idx = 0
+            result = []
+            for idx in verb_indices:
+                # Split from the last split point to the current verb
+                if idx - start_idx > word_min_threshold:
+                    split = tokens[start_idx:idx+1]
+                    result.append(" ".join(split))
+                    start_idx = idx + 1
+
+                if start_idx < len(tokens):
+                    result.append(' '.join(tokens[start_idx:]))
+            return result
+
+        new_sentences = []
+        for sentence in sentences:
+            if len(sentence) > split_on_verbs_min_words:
+                new_sentences.append(split_sentence_by_verbs(sentence, pos_tagger, split_on_verbs_min_words))
+        sentences = [s.strip() for s in new_sentences if s.strip()]
+
     # save split text with original punctuation and case
     out_dir, out_file_name = os.path.split(out_file)
     with open(os.path.join(out_dir, out_file_name[:-4] + "_with_punct.txt"), "w") as f:
@@ -529,16 +568,20 @@ if __name__ == "__main__":
             pbar.set_description(f"Currently processing: {text}")
             base_name = os.path.basename(text)[:-4]
             out_text_file = os.path.join(args.output_dir, base_name + ".txt")
-
+            tagger = POSTagger(model='models/pos_tagger.model')
             split_text(
                 text,
                 out_text_file,
+                pos_tagger=tagger
                 vocabulary=vocabulary,
                 language=args.language,
                 max_length=args.max_length,
                 additional_split_symbols=args.additional_split_symbols,
                 use_nemo_normalization=args.use_nemo_normalization,
                 split_on_quotes=args.split_on_quotes,
+                split_on_verbs=args.split_on_verbs,
+                split_on_verbs_min_words=args.split_on_verbs_min_words,
+                split_on_verbs_max_words=args.split_on_verbs_max_words,
                 n_jobs=args.n_jobs,
                 batch_size=args.batch_size,
             )
