@@ -423,7 +423,7 @@ def split_text(
     sentences = [s.strip() for s in sentences if s.strip()]
 
     if split_on_verbs:
-        def split_sentence_by_verbs(text, tagger, word_tokenize, word_min_threshold):
+        def split_sentence_by_verbs(text, tagger, word_min_threshold):
             tokens = word_tokenize(text)
             tagged_tokens = tagger.tag(tokens)
             verb_indices = [
