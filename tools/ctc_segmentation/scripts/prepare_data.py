@@ -142,6 +142,11 @@ def process_subtitle_file(
             .replace("--", " -- ")
             .replace(". . .", "...")
         )
+    
+    # Replace ... with غیره if language is 'fa'
+    if language == 'fa':
+        transcript = transcript.replace("...", "غیره")
+
     text = re.sub(r" +", " ", text)  # Remove extra spaces
 
     # Step 2: Vocabulary Symbols Processing
@@ -179,7 +184,7 @@ def process_subtitle_file(
             normalizer = Normalizer(input_case="cased")
             text = normalizer.normalize(text)
         elif language == "fa":
-            normalizer = HazmNormalizer()
+            normalizer = ParsNorm()
             text = normalizer.normalize(text)
 
         # Convert numbers to words using num2words
@@ -229,6 +234,7 @@ def split_text(
     do_lower_case: bool = True,
     max_length: bool = 100,
     additional_split_symbols: bool = None,
+    split_on_quotes: bool = False,
     use_nemo_normalization: bool = False,
     n_jobs: Optional[int] = 1,
     batch_size: Optional[int] = 1.0,
@@ -268,6 +274,10 @@ def split_text(
         .replace(". . .", "...")
     )
 
+    # Replace ... with غیره if language is 'fa'
+    if language == 'fa':
+        transcript = transcript.replace("...", "غیره")
+
     # end of quoted speech - to be able to split sentences by full stop
     if language == 'fa':
         transcript = re.sub(r"([\.\?\!\؟])([\"\'”«»])", r"\g<2>\g<1> ", transcript)
@@ -299,21 +309,25 @@ def split_text(
         transcript = transcript.replace(match, match.replace('. ', '.'))
 
     # find phrases in quotes
-    if language == 'fa':
-        with_quotes = re.finditer(r'«[^»]+»', transcript)
+    if split_on_quotes:
+        if language == 'fa':
+            with_quotes = re.finditer(r'«[^»]+»', transcript)
+        else:
+            with_quotes = re.finditer(r'“[A-Za-z ?]+.*?”', transcript)
+        sentences = []
+        last_idx = 0
+        for m in with_quotes:
+            match = m.group()
+            match_idx = m.start()
+            if last_idx < match_idx:
+                sentences.append(transcript[last_idx:match_idx])
+            sentences.append(match)
+            last_idx = m.end()
+        sentences.append(transcript[last_idx:])
+        sentences = [s.strip() for s in sentences if s.strip()]
     else:
-        with_quotes = re.finditer(r'“[A-Za-z ?]+.*?”', transcript)
-    sentences = []
-    last_idx = 0
-    for m in with_quotes:
-        match = m.group()
-        match_idx = m.start()
-        if last_idx < match_idx:
-            sentences.append(transcript[last_idx:match_idx])
-        sentences.append(match)
-        last_idx = m.end()
-    sentences.append(transcript[last_idx:])
-    sentences = [s.strip() for s in sentences if s.strip()]
+        sentences = [transcript]
+
 
     # Read and split transcript by utterance (roughly, sentences)
     if language == 'fa':
