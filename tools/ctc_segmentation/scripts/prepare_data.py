@@ -31,10 +31,7 @@ from nemo.collections.asr.models.ctc_models import EncDecCTCModel
 from nemo.collections.asr.models.hybrid_rnnt_ctc_models import EncDecHybridRNNTCTCModel
 from nemo.utils import model_utils
 
-from hazm import Normalizer as HazmNormalizer
-from parsivar import Normalizer as ParsiVarNormalizer
-
-from english_to_persian_transliteration import convert_to_persian
+from parsnorm import ParsNorm
 
 
 try:
@@ -284,12 +281,6 @@ def split_text(
         transcript = re.sub(r'(\[.*?\])', ' ', transcript)
         # remove text in curly brackets
         transcript = re.sub(r'(\{.*?\})', ' ', transcript)
-    
-    def is_abbreviation(word, lower_case_unicode, upper_case_unicode):
-        abbreviation_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)"
-        return bool(re.match(abbreviation_pattern, word))
-
-
 
     lower_case_unicode = ''
     upper_case_unicode = ''
@@ -302,9 +293,6 @@ def split_text(
     elif language not in ["ru", "en"]:
         print(f"Consider using {language} unicode letters for better sentence split.")
 
-    if language == "fa":
-        # Regex pattern to find English words
-        transcript = re.sub(r'\b[a-zA-Z]+\b', lambda match: convert_to_persian(match.group(0)) if not is_abbreviation(match.group(0), lower_case_unicode, upper_case_unicode) else match.group(0), transcript)
     # remove space in the middle of the lower case abbreviation to avoid splitting into separate sentences
     matches = re.findall(r'[a-z' + lower_case_unicode + ']\.\s[a-z' + lower_case_unicode + ']\.', transcript)
     for match in matches:
@@ -395,10 +383,6 @@ def split_text(
     if " " in vocab_no_space_with_digits:
         vocab_no_space_with_digits.remove(" ")
 
-    sentences = [
-        s.strip() for s in sentences if len(vocab_no_space_with_digits.intersection(set(s.lower()))) > 0 and s.strip()
-    ]
-
     # when no punctuation marks present in the input text, split based on max_length
     if len(sentences) == 1:
         sent = sentences[0].split()
@@ -435,9 +419,12 @@ def split_text(
             sentences = sentences_norm
     
     if language == "fa":
-        normalizer = HazmNormalizer()
+        normalizer = ParsNorm()
         sentences = [normalizer.normalize(s) for s in sentences]
 
+    sentences = [
+        s.strip() for s in sentences if len(vocab_no_space_with_digits.intersection(set(s.lower()))) > 0 and s.strip()
+    ]
     sentences = '\n'.join(sentences)
 
     # replace numbers with num2words

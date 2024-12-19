@@ -16,6 +16,5 @@ python -m pip install hezar
 python -m pip install vosk
 wget "https://raw.githubusercontent.com/saeedzou/NeMo/main/tools/ctc_segmentation/requirements.txt" -O requirements.txt
 python -m pip install -r requirements.txt
-wget "https://raw.githubusercontent.com/saeedzou/Speech-Dataset/main/requirements.txt" -O requirements.txt
-wget "https://raw.githubusercontent.com/saeedzou/Speech-Dataset/main/english_to_persian_transliteration.py" -O english_to_persian_transliteration.py
+python -m pip install git+https://github.com/saeedzou/ParsNorm.git
 echo "Installation completed."
