@@ -75,7 +75,7 @@ parser.add_argument(
     "Use '|' as a separator between symbols, for example: ';|:'. Use '\s' to split by space.",
 )
 parser.add_argument(
-    "--split_on_quotes", type=int, default=False, help="Whether to split on quotes or not. «» is used for Persian"
+    "--split_on_quotes", type=bool, default=False, help="Whether to split on quotes or not. «» is used for Persian"
 )
 parser.add_argument(
     "--use_nemo_normalization",
