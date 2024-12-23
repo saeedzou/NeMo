@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     # create a directory to store segments with alignement confindence score avove the threshold
     args.output_dir = os.path.abspath(args.output_dir)
-    clips_dir = os.path.join(args.output_dir, "clips")
+    clips_dir = os.path.join(args.output_dir, f"clips_{args.sample_rate // 1000}k")
     manifest_dir = os.path.join(args.output_dir, "manifests")
     os.makedirs(clips_dir, exist_ok=True)
     os.makedirs(manifest_dir, exist_ok=True)
