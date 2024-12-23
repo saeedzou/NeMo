@@ -37,6 +37,7 @@ echo "MAX_DURATION = $MAX_DURATION"
 echo "MODE = $MODE"
 
 echo "AUDIO PREPROCESSING..."
+rm -rf $OUTPUT_DIR/processed
 python $SCRIPTS_DIR/prepare_data.py \
 --audio_dir=$INPUT_AUDIO_DIR \
 --output_dir=$OUTPUT_DIR/processed/ \
