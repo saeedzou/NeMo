@@ -25,7 +25,6 @@ ADDITIONAL_SPLIT_SYMBOLS=":|;"
 USE_NEMO_NORMALIZATION='True'
 NUM_JOBS=-2 # The maximum number of concurrently running jobs, `-2` - all CPUs but one are used
 SAMPLE_RATE=16000 # Target sample rate (default for ASR data - 16000 Hz)
-TARGET_SAMPLE_RATE=44100 # Final sample rate for segmented audio files
 MAX_DURATION=20 # Maximum audio segment duration, in seconds. Samples that are longer will be dropped.
 
 for ARG in "$@"
@@ -50,7 +49,6 @@ echo "LANGUAGE = $LANGUAGE"
 echo "MIN_SEGMENT_LEN = $MIN_SEGMENT_LEN"
 echo "MAX_SEGMENT_LEN = $MAX_SEGMENT_LEN"
 echo "SAMPLE_RATE = $SAMPLE_RATE"
-echo "TARGET_SAMPLE_RATE = $TARGET_SAMPLE_RATE"
 echo "ADDITIONAL_SPLIT_SYMBOLS = $ADDITIONAL_SPLIT_SYMBOLS"
 echo "USE_NEMO_NORMALIZATION = $USE_NEMO_NORMALIZATION"
 
@@ -112,17 +110,6 @@ python $SCRIPTS_DIR/verify_segments.py \
 --base_dir=$OUTPUT_DIR  || exit
 
 # STEP #4
-# The prepared audios from step 1 have low resolution to be compatible with the model.
-# We need to upsample the audio files to a higher resolution
-echo "AUDIO PREPROCESSING..."
-python $SCRIPTS_DIR/prepare_data.py \
---audio_dir=$DATA_DIR/audio \
---output_dir=$OUTPUT_DIR/processed/ \
---cut_prefix=$CUT_PREFIX \
---model=$MODEL_NAME_OR_PATH \
---sample_rate=$TARGET_SAMPLE_RATE || exit
-
-# STEP #5
 # Cut the original audio files based on the alignment score. Only segments with alignment confidence score
 # above the MIN_SCORE value will be saved to $OUTPUT_DIR/manifests/manifest.json
 echo "CUTTING AUDIO..."
@@ -131,5 +118,5 @@ python $SCRIPTS_DIR/cut_audio.py \
 --alignment=$OUTPUT_DIR/verified_segments \
 --threshold=$MIN_SCORE \
 --offset=$OFFSET \
---sample_rate=$TARGET_SAMPLE_RATE \
+--sample_rate=$SAMPLE_RATE \
 --max_duration=$MAX_DURATION || exit
