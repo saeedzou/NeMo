@@ -55,7 +55,7 @@ python $SCRIPTS_DIR/cut_audio.py \
 --max_duration=$MAX_DURATION || exit
 
 echo "PREPARING DATASET..."
-python $SCRIPTS_DIR/preparing_dataset.py \
+python $SCRIPTS_DIR/create_metadata_and_clean_clips.py \
 --manifest=$MANIFEST \
 --output_dir=$OUTPUT_DIR/ \
 --mode=$MODE \
