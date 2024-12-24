@@ -28,7 +28,7 @@ SAMPLE_RATE=16000 # Target sample rate (default for ASR data - 16000 Hz)
 MAX_DURATION=20 # Maximum audio segment duration, in seconds. Samples that are longer will be dropped.
 REMOVE_BRACKETS=True
 REMOVE_ASTERISKS=False
-REMOVE_PARANTHESIS=False
+REMOVE_PARENTHESES=False
 
 for ARG in "$@"
 do
@@ -56,7 +56,7 @@ echo "ADDITIONAL_SPLIT_SYMBOLS = $ADDITIONAL_SPLIT_SYMBOLS"
 echo "USE_NEMO_NORMALIZATION = $USE_NEMO_NORMALIZATION"
 echo "REMOVE_BRACKETS = $REMOVE_BRACKETS"
 echo "REMOVE_ASTERISKS = $REMOVE_ASTERISKS"
-echo "REMOVE_PARANTHESIS = $REMOVE_PARANTHESIS"
+echo "REMOVE_PARENTHESES = $REMOVE_PARENTHESES"
 
 if [[ -z $MODEL_NAME_OR_PATH ]] || [[ -z $DATA_DIR ]] || [[ -z $OUTPUT_DIR ]]; then
   echo "Usage: $(basename "$0")
@@ -90,7 +90,7 @@ python $SCRIPTS_DIR/prepare_data.py \
 --output_dir=$OUTPUT_DIR/processed/ \
 --remove_brackets=$REMOVE_BRACKETS \
 --remove_asterisks=$REMOVE_ASTERISKS \
---remove_paranthesis=$REMOVE_PARANTHESIS \
+--remove_parentheses=$REMOVE_PARENTHESES \
 --language=$LANGUAGE \
 --cut_prefix=$CUT_PREFIX \
 --model=$MODEL_NAME_OR_PATH \
