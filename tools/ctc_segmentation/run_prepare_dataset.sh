@@ -62,6 +62,7 @@ python $SCRIPTS_DIR/create_metadata_and_clean_clips.py \
 --manifest=$MANIFEST \
 --output_dir=$OUTPUT_DIR/ \
 --mode=$MODE \
+--output_format=$OUTPUT_FORMAT \
 --clips_dir=$OUTPUT_DIR/clips_44k/ || exit
 
 echo ""COPYING DATASET TO $DATASET_DIR"..."
@@ -71,7 +72,3 @@ cp $OUTPUT_DIR/metadata.csv $DATASET_DIR || exit
 
 echo ""ZIPPING DATASET TO $DATASET_DIR"..."
 zip -rq $DATASET_DIR.zip $DATASET_DIR || exit
-
-
-
-

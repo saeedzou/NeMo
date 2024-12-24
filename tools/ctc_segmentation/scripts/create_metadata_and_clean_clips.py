@@ -18,9 +18,12 @@ def parse_args():
     parser.add_argument(
         "--mode_specific", type=str, default='None', help="Extra processing according to mode"
     )
+    parser.add_argument(
+        "--output_format", type=str, default='mp3', help="Format of the output audio segments (wav or mp3)"
+    )
     return parser.parse_args()
 
-def load_manifest(path, mode):
+def load_manifest(path, mode, format):
     with open(path, "r", encoding="utf8") as f:
         lines = f.readlines()
 
@@ -32,7 +35,7 @@ def load_manifest(path, mode):
     
     for line in lines:
         x = json.loads(line)
-        x['audio_filepath'] = os.path.basename(x['audio_filepath'])
+        x['audio_filepath'] = os.path.basename(x['audio_filepath']).split(".")[0] + f".{format}"
 
         if 'recitationId' not in x and mode == 'ganjoor':
             x['recitationId'] = x['audio_filepath'].split("_")[0]
@@ -59,7 +62,7 @@ def remove_filtered(clips_dir, data):
 def main():
     args = parse_args()
 
-    data, attributes = load_manifest(args.manifest, args.mode_specific)
+    data, attributes = load_manifest(args.manifest, args.mode_specific, args.output_format)
     save_manifest_csv(data, attributes, os.path.join(args.output_dir, "metadata.csv"))
     remove_filtered(args.clips_dir, data)
 
