@@ -75,6 +75,15 @@ parser.add_argument(
     "Use '|' as a separator between symbols, for example: ';|:'. Use '\s' to split by space.",
 )
 parser.add_argument(
+    "--remove_brackets", type=bool, default=True, help="Whether to remove text in square brackets or not"
+)
+parser.add_argument(
+    "--remove_asterisks", type=bool, default=False, help="Whether to remove text in asterisks or not"
+)
+parser.add_argument(
+    "--remove_parentheses", type=bool, default=False, help="Whether to remove text in parentheses or not"
+)
+parser.add_argument(
     "--split_on_quotes", type=bool, default=False, help="Whether to split on quotes or not. «» is used for Persian"
 )
 parser.add_argument(
@@ -245,13 +254,15 @@ def split_text(
     pos_tagger,
     language="en",
     remove_brackets: bool = True,
+    remove_asterisks: bool = False,
+    remove_parentheses: bool = False,
     do_lower_case: bool = True,
     max_length: bool = 100,
     additional_split_symbols: bool = None,
     split_on_quotes: bool = False,
     split_on_verbs: bool = True,
     split_on_verbs_min_words: int = 5,
-    split_on_verbs_max_words: int = 20,
+    split_on_verbs_max_words: int = 15,
     use_nemo_normalization: bool = False,
     n_jobs: Optional[int] = 1,
     batch_size: Optional[int] = 1.0,
@@ -267,6 +278,10 @@ def split_text(
         language: text language
         remove_brackets: Set to True if square [] and curly {} brackets should be removed from text.
             Text in square/curly brackets often contains inaudible fragments like notes or translations
+        remove_asterisks: Set to True if text in asterisks should be removed from text.
+            Text in asterisks often contains inaudible fragments like notes or translations
+        remove_parentheses: Set to True if text in parentheses should be removed from text.
+            Text in parentheses often contains inaudible fragments like notes or translations
         do_lower_case: flag that determines whether to apply lower case to the in_file text
         max_length: Max number of words of the text segment for alignment
         additional_split_symbols: Additional symbols to use for sentence split if eos sentence split resulted in
@@ -308,6 +323,10 @@ def split_text(
         transcript = re.sub(r'(\[.*?\])', ' ', transcript)
         # remove text in curly brackets
         transcript = re.sub(r'(\{.*?\})', ' ', transcript)
+    if remove_asterisks:
+        transcript = re.sub(r'(\*.*?\*)', ' ', transcript)
+    if remove_parentheses:
+        transcript = re.sub(r'(\(.*?\))', ' ', transcript)
 
     lower_case_unicode = ''
     upper_case_unicode = ''
@@ -458,7 +477,7 @@ def split_text(
 
         new_sentences = []
         for sentence in sentences:
-            if len(sentence) > split_on_verbs_min_words:
+            if len(sentence) > split_on_verbs_max_words:
                 new_sentences.extend(split_sentence_by_verbs(sentence, pos_tagger, split_on_verbs_min_words))
         sentences = [s.strip() for s in new_sentences if s.strip()]
 
@@ -591,6 +610,9 @@ if __name__ == "__main__":
                 out_text_file,
                 pos_tagger=tagger,
                 vocabulary=vocabulary,
+                remove_asterisks=args.remove_asterisks,
+                remove_brackets=args.remove_brackets,
+                remove_parentheses=args.remove_parentheses,
                 language=args.language,
                 max_length=args.max_length,
                 additional_split_symbols=args.additional_split_symbols,

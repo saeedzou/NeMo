@@ -26,6 +26,9 @@ USE_NEMO_NORMALIZATION='True'
 NUM_JOBS=-2 # The maximum number of concurrently running jobs, `-2` - all CPUs but one are used
 SAMPLE_RATE=16000 # Target sample rate (default for ASR data - 16000 Hz)
 MAX_DURATION=20 # Maximum audio segment duration, in seconds. Samples that are longer will be dropped.
+REMOVE_BRACKETS=True
+REMOVE_ASTERISKS=False
+REMOVE_PARANTHESIS=False
 
 for ARG in "$@"
 do
@@ -51,6 +54,9 @@ echo "MAX_SEGMENT_LEN = $MAX_SEGMENT_LEN"
 echo "SAMPLE_RATE = $SAMPLE_RATE"
 echo "ADDITIONAL_SPLIT_SYMBOLS = $ADDITIONAL_SPLIT_SYMBOLS"
 echo "USE_NEMO_NORMALIZATION = $USE_NEMO_NORMALIZATION"
+echo "REMOVE_BRACKETS = $REMOVE_BRACKETS"
+echo "REMOVE_ASTERISKS = $REMOVE_ASTERISKS"
+echo "REMOVE_PARANTHESIS = $REMOVE_PARANTHESIS"
 
 if [[ -z $MODEL_NAME_OR_PATH ]] || [[ -z $DATA_DIR ]] || [[ -z $OUTPUT_DIR ]]; then
   echo "Usage: $(basename "$0")
@@ -82,6 +88,9 @@ python $SCRIPTS_DIR/prepare_data.py \
 --in_text=$DATA_DIR/text \
 --audio_dir=$DATA_DIR/audio \
 --output_dir=$OUTPUT_DIR/processed/ \
+--remove_brackets=$REMOVE_BRACKETS \
+--remove_asterisks=$REMOVE_ASTERISKS \
+--remove_paranthesis=$REMOVE_PARANTHESIS \
 --language=$LANGUAGE \
 --cut_prefix=$CUT_PREFIX \
 --model=$MODEL_NAME_OR_PATH \
