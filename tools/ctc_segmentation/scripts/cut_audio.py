@@ -18,6 +18,7 @@ import os
 from glob import glob
 
 import numpy as np
+import soundfile as sf
 from scipy.io import wavfile
 from tqdm import tqdm
 
@@ -37,6 +38,13 @@ parser.add_argument(
     type=float,
     help="Duration of audio for mean absolute value calculation at the edges, s",
     default=0.05,
+)
+parser.add_argument(
+    "--output_format",
+    type=str,
+    choices=["wav", "mp3"],
+    default="wav",
+    help="Format of the output audio segments (wav or mp3). Default is wav.",
 )
 parser.add_argument("--sample_rate", type=int, help="Sample rate, Hz", default=16000)
 parser.add_argument(
@@ -99,8 +107,11 @@ def process_alignment(alignment_file: str, manifest: str, clips_dir: str, args):
                 text_normalized = ref_text_normalized[i].strip()
                 if score >= args.threshold:
                     high_score_dur += duration
-                    audio_filepath = os.path.join(clips_dir, f"{base_name}_{i:04}.wav")
-                    wavfile.write(audio_filepath, sampling_rate, segment)
+                    audio_filepath = os.path.join(clips_dir, f"{base_name}_{i:04}.{args.output_format}")
+                    if args.output_format == "wav":
+                        wavfile.write(audio_filepath, sampling_rate, segment)
+                    elif args.output_format == "mp3":
+                        sf.write(audio_filepath, segment, samplerate=sampling_rate, format="MP3")
 
                     assert len(signal.shape) == 1 and sampling_rate == args.sample_rate, "check sampling rate"
 

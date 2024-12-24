@@ -6,6 +6,7 @@ INPUT_AUDIO_DIR="" # Path to original directory with audio files
 MANIFEST=""
 OUTPUT_DIR=""
 DATASET_DIR=""
+OUTPUT_FORMAT="mp3"
 CUT_PREFIX=0
 MIN_SCORE=-2
 OFFSET=0
@@ -29,6 +30,7 @@ echo "INPUT_AUDIO_DIR = $INPUT_AUDIO_DIR"
 echo "MANIFEST = $MANIFEST"
 echo "OUTPUT_DIR = $OUTPUT_DIR"
 echo "DATASET_DIR = $DATASET_DIR"
+echo "OUTPUT_FORMAT = $OUTPUT_FORMAT"
 echo "CUT_PREFIX = $CUT_PREFIX"
 echo "MIN_SCORE = $MIN_SCORE"
 echo "OFFSET = $OFFSET"
@@ -49,6 +51,7 @@ echo "CUTTING AUDIO..."
 python $SCRIPTS_DIR/cut_audio.py \
 --output_dir=$OUTPUT_DIR \
 --alignment=$OUTPUT_DIR/verified_segments \
+--output_format=$OUTPUT_FORMAT \
 --threshold=$MIN_SCORE \
 --offset=$OFFSET \
 --sample_rate=$SAMPLE_RATE \
