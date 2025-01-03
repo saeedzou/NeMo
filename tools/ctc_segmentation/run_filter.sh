@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+[ ! -f transcribe_speech.py ] && wget -O transcribe_speech.py https://raw.githubusercontent.com/NVIDIA/NeMo/main/examples/asr/transcribe_speech.py
 SCRIPTS_DIR="scripts" # /<PATH TO>/NeMo/tools/ctc_segmentation/tools/scripts/ directory
 MODEL_NAME_OR_PATH="" # ASR model to use for transcribing the segmented audio files
 INPUT_AUDIO_DIR="" # Path to original directory with audio files
@@ -59,10 +59,11 @@ fi
 OUT_MANIFEST="$(dirname ${MANIFEST})"
 OUT_MANIFEST=$OUT_MANIFEST/manifest_transcribed.json
 # Add transcripts to the manifest file, ASR model predictions will be stored under "pred_text" field
-python ${SCRIPTS_DIR}/../../../examples/asr/transcribe_speech.py \
+python ./transcribe_speech.py \
 $ARG_MODEL=$MODEL_NAME_OR_PATH \
 dataset_manifest=$MANIFEST \
 output_filename=${OUT_MANIFEST} \
+use_cer=True \
 batch_size=${BATCH_SIZE} \
 num_workers=0 || exit
 

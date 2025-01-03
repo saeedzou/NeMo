@@ -26,6 +26,75 @@ from tqdm import tqdm
 
 from nemo.collections.common.tokenizers.sentencepiece_tokenizer import SentencePieceTokenizer
 
+def get_partitions(
+    t: int = 100000,
+    max_len_s: float = 1280.0,
+    fs: int = 16000,
+    samples_to_frames_ratio=512,
+    overlap: int = 0,
+):
+    """Obtain partitions
+
+    Note that this is implemented for frontends that discard trailing data.
+
+    Note that the partitioning strongly depends on your architecture.
+
+    A note on audio indices:
+        Based on the ratio of audio sample points to lpz indices (here called
+        frame), the start index of block N is:
+        0 + N * samples_to_frames_ratio
+        Due to the discarded trailing data, the end is then in the range of:
+        [N * samples_to_frames_ratio - 1 .. (1+N) * samples_to_frames_ratio] ???
+    """
+    # max length should be ~ cut length + 25%
+    cut_time_s = max_len_s / 1.25
+    max_length = int(max_len_s * fs)
+    cut_length = int(cut_time_s * fs)
+    # make sure its a multiple of frame size
+    max_length -= max_length % samples_to_frames_ratio
+    cut_length -= cut_length % samples_to_frames_ratio
+    overlap = int(max(0, overlap))
+    if (max_length - cut_length) <= samples_to_frames_ratio * (2 + overlap):
+        raise ValueError(
+            f"Pick a larger time value for partitions. "
+            f"time value: {max_len_s}, "
+            f"overlap: {overlap}, "
+            f"ratio: {samples_to_frames_ratio}."
+        )
+    partitions = []
+    duplicate_frames = []
+    cumulative_lpz_length = 0
+    cut_length_lpz_frames = int(cut_length // samples_to_frames_ratio)
+    partition_start = 0
+    while t > max_length:
+        start = int(max(0, partition_start - samples_to_frames_ratio * overlap))
+        end = int(
+            partition_start + cut_length + samples_to_frames_ratio * (1 + overlap) - 1
+        )
+        partitions += [(start, end)]
+        # overlap - duplicate frames shall be deleted.
+        cumulative_lpz_length += cut_length_lpz_frames
+        for i in range(overlap):
+            duplicate_frames += [
+                cumulative_lpz_length - i,
+                cumulative_lpz_length + (1 + i),
+            ]
+        # next partition
+        t -= cut_length
+        partition_start += cut_length
+    else:
+        start = int(max(0, partition_start - samples_to_frames_ratio * overlap))
+        partitions += [(start, None)]
+    partition_dict = {
+        "partitions": partitions,
+        "overlap": overlap,
+        "delete_overlap_list": duplicate_frames,
+        "samples_to_frames_ratio": samples_to_frames_ratio,
+        "max_length": max_length,
+        "cut_length": cut_length,
+        "cut_time_s": cut_time_s,
+    }
+    return partition_dict
 
 def get_segments(
     log_probs: np.ndarray,

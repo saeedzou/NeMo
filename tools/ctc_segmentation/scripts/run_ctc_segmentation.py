@@ -24,7 +24,7 @@ import scipy.io.wavfile as wav
 import torch
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from utils import get_segments
+from utils import get_segments, get_partitions
 
 import nemo.collections.asr as nemo_asr
 from nemo.collections.asr.models.ctc_models import EncDecCTCModel
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     output_dir = Path(args.output_dir)
 
     if os.path.isdir(data):
-        audio_paths = data.glob("*.wav")
+        audio_paths = list(data.glob("*.wav"))  # Convert generator to list
         data_dir = data
     else:
         audio_paths = [Path(data)]
@@ -126,8 +126,9 @@ if __name__ == "__main__":
     os.makedirs(segments_dir, exist_ok=True)
 
     index_duration = None
-    for path_audio in audio_paths:
-        logging.info(f"Processing {path_audio.name}...")
+    pbar = tqdm(audio_paths, desc='Extracting CTC log probs for audio files', total=len(audio_paths))
+    for path_audio in pbar:
+        pbar.set_description(f"Processing {path_audio.name}...")
         transcript_file = os.path.join(data_dir, path_audio.name.replace(".wav", ".txt"))
         segment_file = os.path.join(
             segments_dir, f"{args.window_len}_" + path_audio.name.replace(".wav", "_segments.txt")
@@ -149,17 +150,30 @@ if __name__ == "__main__":
             logging.debug(f"len(signal): {len(signal)}, sr: {sample_rate}")
             logging.debug(f"Duration: {original_duration}s, file_name: {path_audio}")
 
-            hypotheses = asr_model.transcribe([str(path_audio)], batch_size=1, return_hypotheses=True)
-            # if hypotheses form a tuple (from Hybrid model), extract just "best" hypothesis
-            if type(hypotheses) == tuple and len(hypotheses) == 2:
-                hypotheses = hypotheses[0]
-            log_probs = hypotheses[
-                0
-            ].alignments  # note: "[0]" is for batch dimension unpacking (and here batch size=1)
+            # hypotheses = asr_model.transcribe([str(path_audio)], batch_size=1, return_hypotheses=True)
+            speech_len = len(signal)
+            partitions = get_partitions(t=speech_len, max_len_s=500, fs=sample_rate, samples_to_frames_ratio=1280, overlap=10)
 
-            # move blank values to the first column (ctc-package compatibility)
-            blank_col = log_probs[:, -1].reshape((log_probs.shape[0], 1))
-            log_probs = np.concatenate((blank_col, log_probs[:, :-1]), axis=1)
+            log_probs = []
+            # Process each partition
+            for start, end in partitions["partitions"]:
+                audio_chunk = signal[start:end]
+                hypotheses = asr_model.transcribe([audio_chunk], batch_size=1, return_hypotheses=True, verbose=False)
+                # if hypotheses form a tuple (from Hybrid model), extract just "best" hypothesis
+                if type(hypotheses) == tuple and len(hypotheses) == 2:
+                    hypotheses = hypotheses[0]
+                
+                chunk_log_probs = hypotheses[0].alignments  # note: "[0]" is for batch dimension unpacking (and here batch size=1)
+
+                # move blank values to the first column (ctc-package compatibility)
+                blank_col = chunk_log_probs[:, -1].reshape((chunk_log_probs.shape[0], 1))
+                chunk_log_probs  = np.concatenate((blank_col, chunk_log_probs[:, :-1]), axis=1)
+                log_probs.append(chunk_log_probs)
+
+            # Concatenate all partition log_probs and delete overlapping frames
+            log_probs = np.vstack(log_probs)
+            log_probs = np.delete(log_probs, partitions["delete_overlap_list"], axis=0)
+
 
             all_log_probs.append(log_probs)
             all_segment_file.append(str(segment_file))

@@ -26,6 +26,15 @@ USE_NEMO_NORMALIZATION='True'
 NUM_JOBS=-2 # The maximum number of concurrently running jobs, `-2` - all CPUs but one are used
 SAMPLE_RATE=16000 # Target sample rate (default for ASR data - 16000 Hz)
 MAX_DURATION=20 # Maximum audio segment duration, in seconds. Samples that are longer will be dropped.
+REMOVE_BRACKETS='True'
+REMOVE_ASTERISKS='False'
+REMOVE_PARENTHESES='False'
+REMOVE_SPEAKER_LABELS='False'
+SPLIT_USING_PATTERN='True'
+SPLIT_ON_QUOTES='False'
+SPLIT_ON_VERBS='True'
+SPLIT_ON_VERBS_MIN_WORDS=5
+SPLIT_ON_VERBS_MAX_WORDS=20
 
 for ARG in "$@"
 do
@@ -51,6 +60,15 @@ echo "MAX_SEGMENT_LEN = $MAX_SEGMENT_LEN"
 echo "SAMPLE_RATE = $SAMPLE_RATE"
 echo "ADDITIONAL_SPLIT_SYMBOLS = $ADDITIONAL_SPLIT_SYMBOLS"
 echo "USE_NEMO_NORMALIZATION = $USE_NEMO_NORMALIZATION"
+echo "REMOVE_BRACKETS = $REMOVE_BRACKETS"
+echo "REMOVE_ASTERISKS = $REMOVE_ASTERISKS"
+echo "REMOVE_PARENTHESES = $REMOVE_PARENTHESES"
+echo "REMOVE_SPEAKER_LABELS = $REMOVE_SPEAKER_LABELS"
+echo "SPLIT_USING_PATTERN = $SPLIT_USING_PATTERN"
+echo "SPLIT_ON_QUOTES = $SPLIT_ON_QUOTES"
+echo "SPLIT_ON_VERBS = $SPLIT_ON_VERBS"
+echo "SPLIT_ON_VERBS_MIN_WORDS = $SPLIT_ON_VERBS_MIN_WORDS"
+echo "SPLIT_ON_VERBS_MAX_WORDS = $SPLIT_ON_VERBS_MAX_WORDS"
 
 if [[ -z $MODEL_NAME_OR_PATH ]] || [[ -z $DATA_DIR ]] || [[ -z $OUTPUT_DIR ]]; then
   echo "Usage: $(basename "$0")
@@ -82,6 +100,15 @@ python $SCRIPTS_DIR/prepare_data.py \
 --in_text=$DATA_DIR/text \
 --audio_dir=$DATA_DIR/audio \
 --output_dir=$OUTPUT_DIR/processed/ \
+--remove_brackets=$REMOVE_BRACKETS \
+--remove_asterisks=$REMOVE_ASTERISKS \
+--remove_parentheses=$REMOVE_PARENTHESES \
+--remove_speaker_labels=$REMOVE_SPEAKER_LABELS \
+--split_using_pattern=$SPLIT_USING_PATTERN \
+--split_on_quotes=$SPLIT_ON_QUOTES \
+--split_on_verbs=$SPLIT_ON_VERBS \
+--split_on_verbs_min_words=$SPLIT_ON_VERBS_MIN_WORDS \
+--split_on_verbs_max_words=$SPLIT_ON_VERBS_MAX_WORDS \
 --language=$LANGUAGE \
 --cut_prefix=$CUT_PREFIX \
 --model=$MODEL_NAME_OR_PATH \

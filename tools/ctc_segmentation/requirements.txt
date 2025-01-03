@@ -1,2 +1,4 @@
 ctc_segmentation==1.7.1
-num2words
+git+https://github.com/saeedzou/num2words.git
+hazm
+pymediainfo
