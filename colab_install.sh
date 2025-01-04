@@ -3,7 +3,7 @@
 echo "Installing Python packages..."
 python -m pip install nemo_toolkit['asr']
 python -m pip install wget mutagen sox
-python -m pip install huggingface_hub==0.23.2
+python -m pip install huggingface_hub
 python -m pip install pytorch-lightning==2.2.1
 python -m pip install lightning
 wget "https://raw.githubusercontent.com/saeedzou/NeMo/main/tools/ctc_segmentation/requirements.txt" -O requirements.txt
