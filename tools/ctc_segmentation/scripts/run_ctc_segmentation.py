@@ -138,6 +138,17 @@ if __name__ == "__main__":
             continue
         try:
             sample_rate, signal = wav.read(path_audio)
+
+            # Normalize and convert to float32
+            if signal.dtype == 'int16':
+                signal = signal.astype('float32') / 32768.0
+            elif signal.dtype == 'int32':
+                signal = signal.astype('float32') / 2147483648.0
+            elif signal.dtype == 'uint8':
+                signal = (signal.astype('float32') - 128) / 128.0
+            else:
+                # If already float32, ensure no further normalization is done
+                signal = signal.astype('float32')
             if len(signal) == 0:
                 logging.error(f"Skipping {path_audio.name}")
                 continue
