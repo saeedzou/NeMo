@@ -239,7 +239,7 @@ def split_text(
         print(f"Consider using {language} unicode letters for better sentence split.")
 
     # remove space in the middle of the lower case abbreviation to avoid splitting into separate sentences
-    matches = re.findall(r'[a-z' + lower_case_unicode + ']\.\s[a-z' + lower_case_unicode + ']\.', transcript)
+    matches = re.findall(r'[a-z' + lower_case_unicode + r']\.\s[a-z' + lower_case_unicode + r']\.', text)
     for match in matches:
         transcript = transcript.replace(match, match.replace('. ', '.'))
 
@@ -266,9 +266,9 @@ def split_text(
 
     # Read and split transcript by utterance (roughly, sentences)
     if language == 'fa':
-        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.)\s"
+        split_pattern = r"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.)\s"
     else:
-        split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
+        split_pattern = r"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
     
     if split_using_pattern:
         # Split using the defined regex pattern for sentence boundary detection
