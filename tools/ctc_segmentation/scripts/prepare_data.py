@@ -239,7 +239,7 @@ def split_text(
         print(f"Consider using {language} unicode letters for better sentence split.")
 
     # remove space in the middle of the lower case abbreviation to avoid splitting into separate sentences
-    matches = re.findall(r'[a-z' + lower_case_unicode + r']\.\s[a-z' + lower_case_unicode + r']\.', text)
+    matches = re.findall(r'[a-z' + lower_case_unicode + r']\.\s[a-z' + lower_case_unicode + r']\.', transcript)
     for match in matches:
         transcript = transcript.replace(match, match.replace('. ', '.'))
 
