@@ -392,20 +392,15 @@ def split_text(
         new_sentences = []
         for sentence in sentences:
             sentence = normalizer.normalize(sentence,
-                                            clean_urls=True, 
-                                            clean_emails=True, 
                                             repeated_punctuation_removal=True,
                                             symbol_pronounciation=True,
-                                            html_correction=True, 
-                                            english_abbrev_replacement=True,
                                             en_fa_transliteration=True,
                                             arabic_correction=True, 
                                             special_chars_removal=True, 
-                                            emoji_removal=True, 
                                             number_correction=True, 
                                             punctuation_correction=False, 
                                             comma_between_numbers_removal=False, 
-                                            english_correction=False,
+                                            english_correction=True,
                                             convert_time=False, 
                                             convert_date=False,
                                             alphabet_correction=False, 
@@ -416,7 +411,8 @@ def split_text(
                                             book_abbrev_replacement=False, 
                                             other_abbrev_replacement=False, 
                                             number_conversion=False, 
-                                            hazm=False)
+                                            hazm=False,
+                                            remove_punct=False)
             new_sentences.append(sentence)
     
     sentences = [
@@ -453,7 +449,6 @@ def split_text(
         sentences = [normalizer.normalize(s,
                                           punctuation_correction=True, 
                                           comma_between_numbers_removal=True, 
-                                          english_correction=True,
                                           convert_time=True, 
                                           convert_date=True,
                                           alphabet_correction=True, 
@@ -465,11 +460,10 @@ def split_text(
                                           other_abbrev_replacement=True, 
                                           number_conversion=True, 
                                           hazm=True,
-                                          clean_urls=False, 
-                                          clean_emails=False, 
+                                          remove_punct=True,
+                                          english_correction=False,
                                           repeated_punctuation_removal=False,
                                           symbol_pronounciation=False,
-                                          html_correction=False, 
                                           english_abbrev_replacement=False,
                                           en_fa_transliteration=False,
                                           arabic_correction=False, 
