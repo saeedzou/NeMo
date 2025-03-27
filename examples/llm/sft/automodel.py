@@ -35,7 +35,7 @@ from nemo.lightning.pytorch.callbacks import JitConfig, JitTransform
 # Note: ensure that the --nproc-per-node and --devices values match.
 
 
-def make_squad_hf_dataset(tokenizer, micro_batch_size, seq_length, limit_dataset_samples=None, fp8=False):
+def make_squad_hf_dataset(tokenizer, micro_batch_size, seq_length, limit_dataset_samples=None, fp8=False, packed_sequence_size):
     def formatting_prompts_func(example):
         formatted_text = [
             f"Context: {example['context']} Question: {example['question']} Answer:",
@@ -68,11 +68,15 @@ def make_squad_hf_dataset(tokenizer, micro_batch_size, seq_length, limit_dataset
         pad_token_id=tokenizer.eos_id if tokenizer.eos_id is not None else 0,
         pad_seq_len_divisible=16 if fp8 else None,  # FP8 training requires seq length to be divisible by 16.
     )
+    ## tokenization is happening here
     datamodule.map(
         formatting_prompts_func,
         batched=False,
         remove_columns=["id", "title", "context", "question", 'answers'],
     )
+    # Pack the sequences in the dataset if packed_sequence_size > 0
+    if packed_sequence_size > 0:
+        datamodule.pack(packed_sequence_size)
     return datamodule
 
 
@@ -222,6 +226,9 @@ def main():
         default=None,
         help='If set will limit num of dataset samples. Default None (disabled)',
     )
+    parser.add_argument('--packed-sequence-size', type=int, default=-1, help='If a positive integer, this arg'
+    'enables training with sequence packing and specifies the pack size. If less than or equal to 0, sequence '
+    'packing is disabled.')
 
     args = parser.parse_args()
 
@@ -303,6 +310,7 @@ def main():
             seq_length=args.seq_length,
             limit_dataset_samples=args.limit_dataset_samples,
             fp8=args.fp8,
+            args.packed_sequence_size
         )
 
     llm.api.finetune(
