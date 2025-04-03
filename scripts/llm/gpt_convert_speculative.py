@@ -61,7 +61,9 @@ if __name__ == "__main__":
 
     # Currently this does not work when passed in as `model_transform` argument to model
     # as the TransformerEngine `main_grad` attribute does not initialize on the new params.
-    model_transform = SpeculativeTransform(num_eagle_layers=args.num_eagle_layers, num_medusa_heads=args.num_medusa_heads)
+    model_transform = SpeculativeTransform(
+        num_eagle_layers=args.num_eagle_layers, num_medusa_heads=args.num_medusa_heads
+    )
     model_transform(model)
 
     # Save to disk
