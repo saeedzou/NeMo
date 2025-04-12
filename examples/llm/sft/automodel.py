@@ -67,6 +67,7 @@ def make_squad_hf_dataset(tokenizer, micro_batch_size, seq_length,  packed_seque
         micro_batch_size=micro_batch_size,
         pad_token_id=tokenizer.eos_id if tokenizer.eos_id is not None else 0,
         pad_seq_len_divisible=16 if fp8 else None,  # FP8 training requires seq length to be divisible by 16.
+        packed_sequence_size=packed_sequence_size
     )
     ## tokenization is happening here
     datamodule.map(
@@ -76,7 +77,7 @@ def make_squad_hf_dataset(tokenizer, micro_batch_size, seq_length,  packed_seque
     )
     # Pack the sequences in the dataset if packed_sequence_size > 0
     if packed_sequence_size > 0:
-        datamodule.pack(packed_sequence_size)
+        datamodule.pack()
     return datamodule
 
 
