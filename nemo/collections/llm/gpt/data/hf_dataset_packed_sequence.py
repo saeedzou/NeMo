@@ -12,25 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-from tqdm import tqdm
 from typing import Dict, List, Union
 
+import torch
 from datasets import Dataset
 from torch.nn import functional as F
+from tqdm import tqdm
 
 CROSS_ENTROPY_IGNORE_IDX = -100
 PACK_TYPE = Dict[str, Union[torch.Tensor, List[int]]]
 
-class HFDatasetPackedSequence():
+
+class HFDatasetPackedSequence:
     """
     Args:
     dataset_splits: Actual dataset for each split ['train', 'val', 'test']
     """
+
     def __init__(self, dataset_splits):
         self.dataset_splits = dataset_splits
-        self.padding_idx = 0 # Padding value to pack a sequence to self.packed_sequence_size
+        self.padding_idx = 0  # Padding value to pack a sequence to self.packed_sequence_size
         self.contains_loss_mask = False
+
     def pack(self, packed_sequence_size, split_across_pack, max_packs):
         """Iterate through the dataset. Use a buffer to hold samples until packed_sequence_size,
         then append the buffer to self.packs as a single "packed" sample. Continue
@@ -66,7 +69,8 @@ class HFDatasetPackedSequence():
                 "input_pos": [],
                 "seq_lens": [],
             }
-            if self.contains_loss_mask: current_pack["loss_mask"] = []
+            if self.contains_loss_mask:
+                current_pack["loss_mask"] = []
             self.previous_sample_boundary: int = 0
             if rank == 0:
                 pbar = tqdm(total=len(ds), desc=f"Packing {split} dataset", dynamic_ncols=True)
@@ -94,10 +98,7 @@ class HFDatasetPackedSequence():
 
                 # If the current pack is over the packed_sequence_size, add it to self.packs and
                 # retain any truncated or bumped samples for next pack
-                while (
-                    len(current_pack["tokens"]) > self.packed_sequence_size
-                    and not self._should_stop_packing()
-                ):
+                while len(current_pack["tokens"]) > self.packed_sequence_size and not self._should_stop_packing():
                     current_pack = self._split_and_add_pack(current_pack)
 
                 if rank == 0:
@@ -110,16 +111,14 @@ class HFDatasetPackedSequence():
                     break
 
             # Handle the last pack if there's leftover and we haven't filled up the max packs
-            if len(current_pack["tokens"]) > 0 and (
-                self.max_packs is None or len(self.packs) < self.max_packs
-            ):
+            if len(current_pack["tokens"]) > 0 and (self.max_packs is None or len(self.packs) < self.max_packs):
                 # No need to handle splitting at this point so we can just add the current pack
                 self._add_pack(current_pack)
 
             # After packing all samples, convert self.packs to a Dataset object
-            packed_dataset = Dataset.from_dict({
-                key: [pack[key] for pack in self.packs] for key in self.packs[0].keys()
-            })
+            packed_dataset = Dataset.from_dict(
+                {key: [pack[key] for pack in self.packs] for key in self.packs[0].keys()}
+            )
 
             # Assign the packed dataset to self.dataset_splits[split]
             self.dataset_splits[split] = packed_dataset
@@ -152,7 +151,8 @@ class HFDatasetPackedSequence():
             "input_pos": current_pack["input_pos"][:boundary],
             "seq_lens": current_pack["seq_lens"][:-1] + seq_len_padding,
         }
-        if self.contains_loss_mask: pack["loss_mask"] = current_pack["loss_mask"][:boundary]
+        if self.contains_loss_mask:
+            pack["loss_mask"] = current_pack["loss_mask"][:boundary]
 
         # Process and add the pack
         self._add_pack(pack)
@@ -160,9 +160,7 @@ class HFDatasetPackedSequence():
         # Return the length of the first sample in next pack if we are splitting across packs,
         # otherwise return the length of the last sample in the current pack
         next_seq_len = (
-            len(current_pack["tokens"][boundary:])
-            if self.split_across_pack
-            else current_pack["seq_lens"][-1]
+            len(current_pack["tokens"][boundary:]) if self.split_across_pack else current_pack["seq_lens"][-1]
         )
 
         output_dict = {
@@ -189,7 +187,8 @@ class HFDatasetPackedSequence():
             "input_pos": torch.tensor(pack["input_pos"], dtype=torch.long),
             "seq_lens": torch.tensor(pack["seq_lens"], dtype=torch.long),
         }
-        if self.contains_loss_mask: tensor_pack["loss_mask"] = torch.tensor(pack["loss_mask"], dtype=torch.long)
+        if self.contains_loss_mask:
+            tensor_pack["loss_mask"] = torch.tensor(pack["loss_mask"], dtype=torch.long)
         return tensor_pack
 
     def _pad_pack(self, pack: PACK_TYPE, padding_idx: int) -> PACK_TYPE:
@@ -213,8 +212,8 @@ class HFDatasetPackedSequence():
         if self.contains_loss_mask:
             padded_loss_mask = F.pad(
                 pack["loss_mask"],
-                    (0, self.packed_sequence_size - len(pack["loss_mask"])),
-                    value=0,
+                (0, self.packed_sequence_size - len(pack["loss_mask"])),
+                value=0,
             )
 
         # Add padding tokens as a last seq len to ensure sum is packed_sequence_size
@@ -241,8 +240,10 @@ class HFDatasetPackedSequence():
             "input_pos": padded_input_pos,
             "seq_lens": padded_seq_lens,
         }
-        if self.contains_loss_mask: padded_pack["loss_mask"] = padded_loss_mask
+        if self.contains_loss_mask:
+            padded_pack["loss_mask"] = padded_loss_mask
         return padded_pack
+
 
 def create_block_causal_mask(seq_lens: List[torch.Tensor]) -> torch.Tensor:
     """
@@ -280,6 +281,7 @@ def create_block_causal_mask(seq_lens: List[torch.Tensor]) -> torch.Tensor:
 
         batch_block_attn_masks.append(torch.block_diag(*block_attn_masks))
     return torch.stack(batch_block_attn_masks)
+
 
 def packed_block_causal_mask(seq_lens: List[torch.Tensor]):
     """

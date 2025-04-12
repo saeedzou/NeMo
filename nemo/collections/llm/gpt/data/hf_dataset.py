@@ -22,12 +22,13 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from datasets import Dataset, DatasetDict, load_dataset
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torch.nn import functional as F
 
-from nemo.collections.llm.gpt.data.hf_dataset_packed_sequence import packed_block_causal_mask, HFDatasetPackedSequence
+from nemo.collections.llm.gpt.data.hf_dataset_packed_sequence import HFDatasetPackedSequence, packed_block_causal_mask
 from nemo.utils import logging
+
 
 def clean_split(name):
     """removes split from name
@@ -318,8 +319,8 @@ class HFDatasetDataModule(pl.LightningDataModule):
         if self.packed_sequence_size > 0:
             seq_lens = [x["seq_lens"] for x in batch]
             block_mask = packed_block_causal_mask(
-                        seq_lens=seq_lens,
-                    )
+                seq_lens=seq_lens,
+            )
 
             ## add block_mask to the batch
             for i, item in enumerate(batch):
@@ -492,6 +493,7 @@ class HellaSwagHFDataModule(HFDatasetDataModule):
         dataset = dataset.shuffle(seed=seed)
 
         return dataset
+
 
 class SquadHFDataModule(HFDatasetDataModule):
     """
