@@ -18,6 +18,7 @@ import os
 from glob import glob
 
 import numpy as np
+import soundfile as sf
 from scipy.io import wavfile
 from tqdm import tqdm
 
@@ -37,6 +38,13 @@ parser.add_argument(
     type=float,
     help="Duration of audio for mean absolute value calculation at the edges, s",
     default=0.05,
+)
+parser.add_argument(
+    "--output_format",
+    type=str,
+    choices=["wav", "mp3"],
+    default="wav",
+    help="Format of the output audio segments (wav or mp3). Default is wav.",
 )
 parser.add_argument("--sample_rate", type=int, help="Sample rate, Hz", default=16000)
 parser.add_argument(
@@ -99,8 +107,11 @@ def process_alignment(alignment_file: str, manifest: str, clips_dir: str, args):
                 text_normalized = ref_text_normalized[i].strip()
                 if score >= args.threshold:
                     high_score_dur += duration
-                    audio_filepath = os.path.join(clips_dir, f"{base_name}_{i:04}.wav")
-                    wavfile.write(audio_filepath, sampling_rate, segment)
+                    audio_filepath = os.path.join(clips_dir, f"{base_name}_{i:04}.{args.output_format}")
+                    if args.output_format == "wav":
+                        wavfile.write(audio_filepath, sampling_rate, segment)
+                    elif args.output_format == "mp3":
+                        sf.write(audio_filepath, segment, samplerate=sampling_rate, format="MP3")
 
                     assert len(signal.shape) == 1 and sampling_rate == args.sample_rate, "check sampling rate"
 
@@ -156,7 +167,7 @@ if __name__ == "__main__":
 
     # create a directory to store segments with alignement confindence score avove the threshold
     args.output_dir = os.path.abspath(args.output_dir)
-    clips_dir = os.path.join(args.output_dir, "clips")
+    clips_dir = os.path.join(args.output_dir, f"clips_{args.sample_rate // 1000}k")
     manifest_dir = os.path.join(args.output_dir, "manifests")
     os.makedirs(clips_dir, exist_ok=True)
     os.makedirs(manifest_dir, exist_ok=True)
@@ -165,7 +176,7 @@ if __name__ == "__main__":
     if os.path.exists(manifest):
         os.remove(manifest)
 
-    stats_file = os.path.join(args.output_dir, "stats.tsv")
+    stats_file = os.path.join(args.output_dir, "logs", "stats.tsv")
     with open(stats_file, "w") as f:
         f.write("Folder\tSegment\tOriginal dur (s)\tHigh quality dur (s)\tLow quality dur (s)\tDeleted dur (s)\n")
 
