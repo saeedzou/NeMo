@@ -203,4 +203,4 @@ if __name__ == "__main__":
         get_metrics(args.manifest, manifest_with_metrics)
     else:
         manifest_with_metrics = args.manifest
-    filter(manifest_with_metrics)
+    # filter(manifest_with_metrics)
