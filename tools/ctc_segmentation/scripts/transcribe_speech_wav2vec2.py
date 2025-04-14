@@ -113,7 +113,7 @@ def main():
     
     args = parser.parse_args()
 
-    model, processor = load_model_and_processor(args.model_path, args.processor_path)
+    model, processor = load_model_and_processor(args.model_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
