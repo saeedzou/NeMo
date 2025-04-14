@@ -24,7 +24,7 @@ import scipy.io.wavfile as wav
 import torch
 from joblib import Parallel, delayed
 from tqdm import tqdm
-from utils import get_segments
+from utils import get_segments, get_partitions
 
 import nemo.collections.asr as nemo_asr
 from nemo.collections.asr.models.ctc_models import EncDecCTCModel
@@ -33,12 +33,17 @@ from nemo.collections.asr.models.hybrid_rnnt_ctc_models import EncDecHybridRNNTC
 parser = argparse.ArgumentParser(description="CTC Segmentation")
 parser.add_argument("--output_dir", default="output", type=str, help="Path to output directory")
 parser.add_argument(
-    "--data",
+    "--audio",
     type=str,
     required=True,
-    help="Path to directory with audio files and associated transcripts (same respective names only formats are "
-    "different or path to wav file (transcript should have the same base name and be located in the same folder"
-    "as the wav file.",
+    help="Path to directory containing audio files or a single audio file (.wav format)",
+)
+parser.add_argument(
+    "--text",
+    type=str,
+    required=True,
+    help="Path to directory containing transcript files or a single transcript file (.txt format)." 
+    "Transcripts must have the same base names as their corresponding audio files.",
 )
 parser.add_argument("--window_len", type=int, default=8000, help="Window size for ctc segmentation algorithm")
 parser.add_argument("--sample_rate", type=int, default=16000, help="Sampling rate, Hz")
@@ -73,6 +78,31 @@ if __name__ == "__main__":
     handlers = [file_handler, stdout_handler]
     logging.basicConfig(handlers=handlers, level=level)
 
+    audio_path = Path(args.audio)
+    text_path = Path(args.text)
+    output_dir = Path(args.output_dir)
+
+    if audio_path.is_dir() and text_path.is_dir():
+        audio_files = list(audio_path.glob("*.wav"))
+        # text_files that have the same base name as audio files and exist
+        text_files = {f.stem: f for f in text_path.glob("*.txt") if os.path.exists(f)}
+        # keep only audio files that have corresponding transcript files
+        audio_files = [f for f in audio_files if text_files.get(f.stem)]
+
+    elif audio_path.is_file() and text_path.is_file():
+        audio_files = [audio_path]
+        text_files = {text_path.stem: text_path}
+    else:
+        raise ValueError("Both --audio and --text must either point to directories or single files.")
+
+    segments_dir = os.path.join(args.output_dir, "segments")
+    os.makedirs(segments_dir, exist_ok=True)
+    index_duration = None
+
+    batch_size = 100  # Process 100 audio files at a time
+    num_batches = (len(audio_files) + batch_size - 1) // batch_size  # Calculate the number of batches
+
+    
     if os.path.exists(args.model):
         asr_model = nemo_asr.models.ASRModel.restore_from(args.model)
     else:
@@ -108,95 +138,113 @@ if __name__ == "__main__":
     vocabulary = ["ε"] + list(vocabulary)
     logging.debug(f"ASR Model vocabulary: {vocabulary}")
 
-    data = Path(args.data)
-    output_dir = Path(args.output_dir)
+    pbar = tqdm(range(num_batches), desc='Processing batches of audio files')
+    for batch_idx in pbar:
+        batch_start = batch_idx * batch_size
+        batch_end = min((batch_idx + 1) * batch_size, len(audio_files))
+        batch_files = audio_files[batch_start:batch_end]
 
-    if os.path.isdir(data):
-        audio_paths = data.glob("*.wav")
-        data_dir = data
-    else:
-        audio_paths = [Path(data)]
-        data_dir = Path(os.path.dirname(data))
+        all_log_probs = []
+        all_transcript_file = []
+        all_segment_file = []
+        all_wav_paths = []
 
-    all_log_probs = []
-    all_transcript_file = []
-    all_segment_file = []
-    all_wav_paths = []
-    segments_dir = os.path.join(args.output_dir, "segments")
-    os.makedirs(segments_dir, exist_ok=True)
+        for ii, path_audio in enumerate(batch_files):
+            pbar.set_description(f"({ii}/{batch_size}) Processing {path_audio.name}...")
+            transcript_file = text_files.get(path_audio.stem)
+            if not transcript_file:
+                logging.info(f"No matching transcript found for {path_audio.name}. Skipping.")
+                continue
+            segment_file = os.path.join(
+                segments_dir, f"{args.window_len}_" + path_audio.name.replace(".wav", "_segments.txt")
+            )
+            if not os.path.exists(transcript_file):
+                logging.info(f"{transcript_file} not found. Skipping {path_audio.name}")
+                continue
+            try:
+                sample_rate, signal = wav.read(path_audio)
+                # Normalize and convert to float32
+                if signal.dtype == 'int16':
+                    signal = signal.astype('float32') / 32768.0
+                elif signal.dtype == 'int32':
+                    signal = signal.astype('float32') / 2147483648.0
+                elif signal.dtype == 'uint8':
+                    signal = (signal.astype('float32') - 128) / 128.0
+                else:
+                    signal = signal.astype('float32')
+                if len(signal) == 0:
+                    logging.error(f"Skipping {path_audio.name}")
+                    continue
 
-    index_duration = None
-    for path_audio in audio_paths:
-        logging.info(f"Processing {path_audio.name}...")
-        transcript_file = os.path.join(data_dir, path_audio.name.replace(".wav", ".txt"))
-        segment_file = os.path.join(
-            segments_dir, f"{args.window_len}_" + path_audio.name.replace(".wav", "_segments.txt")
-        )
-        if not os.path.exists(transcript_file):
-            logging.info(f"{transcript_file} not found. Skipping {path_audio.name}")
-            continue
-        try:
-            sample_rate, signal = wav.read(path_audio)
-            if len(signal) == 0:
+                assert (
+                    sample_rate == args.sample_rate
+                ), f"Sampling rate of the audio file {path_audio} doesn't match --sample_rate={args.sample_rate}"
+
+                original_duration = len(signal) / sample_rate
+                logging.debug(f"len(signal): {len(signal)}, sr: {sample_rate}")
+                logging.debug(f"Duration: {original_duration}s, file_name: {path_audio}")
+
+                # hypotheses = asr_model.transcribe([str(path_audio)], batch_size=1, return_hypotheses=True)
+                speech_len = len(signal)
+                partitions = get_partitions(t=speech_len, max_len_s=500, fs=sample_rate, samples_to_frames_ratio=1280, overlap=10)
+
+                log_probs = []
+                # Process each partition
+                for start, end in partitions["partitions"]:
+                    audio_chunk = signal[start:end]
+                    hypotheses = asr_model.transcribe([audio_chunk], batch_size=1, return_hypotheses=True, verbose=False)
+                    # if hypotheses form a tuple (from Hybrid model), extract just "best" hypothesis
+                    if type(hypotheses) == tuple and len(hypotheses) == 2:
+                        hypotheses = hypotheses[0]
+                    
+                    chunk_log_probs = hypotheses[0].alignments  # note: "[0]" is for batch dimension unpacking (and here batch size=1)
+
+                    # move blank values to the first column (ctc-package compatibility)
+                    blank_col = chunk_log_probs[:, -1].reshape((chunk_log_probs.shape[0], 1))
+                    chunk_log_probs  = np.concatenate((blank_col, chunk_log_probs[:, :-1]), axis=1)
+                    log_probs.append(chunk_log_probs)
+
+                # Concatenate all partition log_probs and delete overlapping frames
+                log_probs = np.vstack(log_probs)
+                log_probs = np.delete(log_probs, partitions["delete_overlap_list"], axis=0)
+
+
+                all_log_probs.append(log_probs)
+                all_segment_file.append(str(segment_file))
+                all_transcript_file.append(str(transcript_file))
+                all_wav_paths.append(path_audio)
+
+                if index_duration is None:
+                    index_duration = len(signal) / log_probs.shape[0] / sample_rate
+
+            except Exception as e:
+                logging.error(e)
                 logging.error(f"Skipping {path_audio.name}")
                 continue
 
-            assert (
-                sample_rate == args.sample_rate
-            ), f"Sampling rate of the audio file {path_audio} doesn't match --sample_rate={args.sample_rate}"
+        asr_model_type = type(asr_model)
+        del asr_model
+        torch.cuda.empty_cache()
 
-            original_duration = len(signal) / sample_rate
-            logging.debug(f"len(signal): {len(signal)}, sr: {sample_rate}")
-            logging.debug(f"Duration: {original_duration}s, file_name: {path_audio}")
+        if len(all_log_probs) > 0:
+            start_time = time.time()
 
-            hypotheses = asr_model.transcribe([str(path_audio)], batch_size=1, return_hypotheses=True)
-            # if hypotheses form a tuple (from Hybrid model), extract just "best" hypothesis
-            if type(hypotheses) == tuple and len(hypotheses) == 2:
-                hypotheses = hypotheses[0]
-            log_probs = hypotheses[
-                0
-            ].alignments  # note: "[0]" is for batch dimension unpacking (and here batch size=1)
-
-            # move blank values to the first column (ctc-package compatibility)
-            blank_col = log_probs[:, -1].reshape((log_probs.shape[0], 1))
-            log_probs = np.concatenate((blank_col, log_probs[:, :-1]), axis=1)
-
-            all_log_probs.append(log_probs)
-            all_segment_file.append(str(segment_file))
-            all_transcript_file.append(str(transcript_file))
-            all_wav_paths.append(path_audio)
-
-            if index_duration is None:
-                index_duration = len(signal) / log_probs.shape[0] / sample_rate
-
-        except Exception as e:
-            logging.error(e)
-            logging.error(f"Skipping {path_audio.name}")
-            continue
-
-    asr_model_type = type(asr_model)
-    del asr_model
-    torch.cuda.empty_cache()
-
-    if len(all_log_probs) > 0:
-        start_time = time.time()
-
-        normalized_lines = Parallel(n_jobs=args.num_jobs)(
-            delayed(get_segments)(
-                all_log_probs[i],
-                all_wav_paths[i],
-                all_transcript_file[i],
-                all_segment_file[i],
-                vocabulary,
-                tokenizer,
-                bpe_model,
-                index_duration,
-                args.window_len,
-                log_file=log_file,
-                debug=args.debug,
+            normalized_lines = Parallel(n_jobs=args.num_jobs)(
+                delayed(get_segments)(
+                    all_log_probs[i],
+                    all_wav_paths[i],
+                    all_transcript_file[i],
+                    all_segment_file[i],
+                    vocabulary,
+                    tokenizer,
+                    bpe_model,
+                    index_duration,
+                    args.window_len,
+                    log_file=log_file,
+                    debug=args.debug,
+                )
+                for i in tqdm(range(len(all_log_probs)))
             )
-            for i in tqdm(range(len(all_log_probs)))
-        )
 
         total_time = time.time() - start_time
         logger.info(f"Total execution time: ~{round(total_time/60)}min")

@@ -92,7 +92,7 @@ if __name__ == "__main__":
     stats["Verified Duration, min"] = round(stats["Verified Duration, min"])
     stats.loc["Total"] = stats.sum()
 
-    stats_file = os.path.join(args.base_dir, "alignment_summary.csv")
+    stats_file = os.path.join(args.base_dir, "logs", "alignment_summary.csv")
     stats.to_csv(stats_file, index=False)
     print(stats)
     print(f"Alignment summary saved to {stats_file}")
