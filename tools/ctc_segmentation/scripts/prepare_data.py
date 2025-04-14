@@ -14,6 +14,7 @@
 
 import argparse
 import os
+import csv
 import re
 from glob import glob
 from typing import List, Optional
@@ -29,6 +30,10 @@ from nemo.collections.asr.models import ASRModel
 from nemo.collections.asr.models.ctc_models import EncDecCTCModel
 from nemo.collections.asr.models.hybrid_rnnt_ctc_models import EncDecHybridRNNTCTCModel
 from nemo.utils import model_utils
+
+from parsnorm import ParsNorm
+from hazm import POSTagger, word_tokenize
+
 
 try:
     from nemo_text_processing.text_normalization.normalize import Normalizer
@@ -49,7 +54,7 @@ parser.add_argument(
     "--language",
     type=str,
     default="en",
-    choices=["en", "ru", "de", "es", 'other'],
+    choices=["en", "ru", "de", "es", "fa", 'other'],
     help='Add target language based on the num2words list of supported languages',
 )
 parser.add_argument(
@@ -70,12 +75,47 @@ parser.add_argument(
     "Use '|' as a separator between symbols, for example: ';|:'. Use '\s' to split by space.",
 )
 parser.add_argument(
+    "--remove_brackets", type=lambda x: x.lower() == 'true', default=True, help="Whether to remove text in square brackets or not"
+)
+parser.add_argument(
+    "--remove_asterisks", type=lambda x: x.lower() == 'true', default=False, help="Whether to remove text in asterisks or not"
+)
+parser.add_argument(
+    "--remove_parentheses", type=lambda x: x.lower() == 'true', default=False, help="Whether to remove text in parentheses or not"
+)
+parser.add_argument(
+    "--remove_speaker_labels", type=lambda x: x.lower() == 'true', default=False, 
+    help="Whether to remove reported speech or not. For example, 'John: Hello, how are you?' \
+    will be converted to 'Hello, how are you?'"
+)
+parser.add_argument(
+    "--split_using_pattern",
+    type=lambda x: x.lower() == 'true',
+    default=True,
+    help="Whether to split text using the defined regex pattern for sentence boundary detection or not",
+)
+parser.add_argument(
+    "--split_on_quotes", type=lambda x: x.lower() == 'true', default=False, help="Whether to split on quotes or not. «» is used for Persian"
+)
+parser.add_argument(
+    "--split_on_verbs", type=lambda x: x.lower() == 'true', default=True, help="Whether to split more on verbs or not"
+)
+parser.add_argument(
+    "--split_on_verbs_min_words", type=int, default=5, help="The minimum number of words available for the sentence to be split"
+)
+parser.add_argument(
+    "--split_on_verbs_max_words", type=int, default=20, help="The word threshold to run splitting on verbs"
+)
+parser.add_argument(
     "--use_nemo_normalization",
     action="store_true",
     help="Set to True to use NeMo Normalization tool to convert numbers from written to spoken format.",
 )
 parser.add_argument(
     "--batch_size", type=int, default=100, help="Batch size for NeMo Normalization tool.",
+)
+parser.add_argument(
+    "--tqdm", type=str, default='default', help="whether to use tqdm for notebook or default for terminal. can be notebook or default",
 )
 
 
@@ -106,11 +146,20 @@ def split_text(
     in_file: str,
     out_file: str,
     vocabulary: List[str],
+    pos_tagger,
     language="en",
     remove_brackets: bool = True,
+    remove_asterisks: bool = False,
+    remove_parentheses: bool = False,
+    remove_speaker_labels: bool = False,
     do_lower_case: bool = True,
     max_length: bool = 100,
     additional_split_symbols: bool = None,
+    split_using_pattern: bool = True,
+    split_on_quotes: bool = False,
+    split_on_verbs: bool = True,
+    split_on_verbs_min_words: int = 5,
+    split_on_verbs_max_words: int = 15,
     use_nemo_normalization: bool = False,
     n_jobs: Optional[int] = 1,
     batch_size: Optional[int] = 1.0,
@@ -126,8 +175,14 @@ def split_text(
         language: text language
         remove_brackets: Set to True if square [] and curly {} brackets should be removed from text.
             Text in square/curly brackets often contains inaudible fragments like notes or translations
+        remove_asterisks: Set to True if text in asterisks should be removed from text.
+            Text in asterisks often contains inaudible fragments like notes or translations
+        remove_parentheses: Set to True if text in parentheses should be removed from text.
+            Text in parentheses often contains inaudible fragments like notes or translations
         do_lower_case: flag that determines whether to apply lower case to the in_file text
         max_length: Max number of words of the text segment for alignment
+        split_using_pattern: Set to True to split text using the defined regex pattern for sentence boundary detection,
+            otherwise split based on new lines.
         additional_split_symbols: Additional symbols to use for sentence split if eos sentence split resulted in
             segments longer than --max_length
         use_nemo_normalization: Set to True to use NeMo normalization tool to convert numbers from written to spoken
@@ -138,22 +193,27 @@ def split_text(
                 (n_cpus + 1 + n_jobs) are used. Thus for n_jobs = -2, all CPUs but one are used.
         batch_size (if use_nemo_normalization=True): Number of examples for each process
     """
-    print(f"Splitting text in {in_file} into sentences.")
     with open(in_file, "r") as f:
         transcript = f.read()
-
+    transcript = re.sub(r'^\s*\n', '', transcript, flags=re.MULTILINE)
     # remove some symbols for better split into sentences
     transcript = (
-        transcript.replace("\n", " ")
-        .replace("\t", " ")
+        transcript.replace("\t", " ")
         .replace("…", "...")
         .replace("\\", " ")
         .replace("--", " -- ")
         .replace(". . .", "...")
     )
 
+    # Replace ٪ with % for Persian
+    if language == 'fa':
+        transcript = transcript.replace("٪", "%")
+
     # end of quoted speech - to be able to split sentences by full stop
-    transcript = re.sub(r"([\.\?\!])([\"\'”])", r"\g<2>\g<1> ", transcript)
+    if language == 'fa':
+        transcript = re.sub(r"([\.\?\!\؟])([\"\'”«»])", r"\g<2>\g<1> ", transcript)
+    else:
+        transcript = re.sub(r"([\.\?\!])([\"\'”])", r"\g<2>\g<1> ", transcript)
 
     # remove extra space
     transcript = re.sub(r" +", " ", transcript)
@@ -162,41 +222,63 @@ def split_text(
         transcript = re.sub(r'(\[.*?\])', ' ', transcript)
         # remove text in curly brackets
         transcript = re.sub(r'(\{.*?\})', ' ', transcript)
+    if remove_asterisks:
+        transcript = re.sub(r'(\*.*?\*)', ' ', transcript)
+    if remove_parentheses:
+        transcript = re.sub(r'(\(.*?\))', ' ', transcript)
+    
+    if remove_speaker_labels:
+        transcript = re.sub(r'^\s*\w+\s*: ', '', transcript, flags=re.MULTILINE)
 
     lower_case_unicode = ''
     upper_case_unicode = ''
     if language == "ru":
         lower_case_unicode = '\u0430-\u04FF'
         upper_case_unicode = '\u0410-\u042F'
+    elif language == "fa":
+        lower_case_unicode = '\u0600-\u06FF'  # Arabic and Persian characters
+        upper_case_unicode = ''  # Persian doesn't have uppercase letters
     elif language not in ["ru", "en"]:
         print(f"Consider using {language} unicode letters for better sentence split.")
 
     # remove space in the middle of the lower case abbreviation to avoid splitting into separate sentences
-    matches = re.findall(r'[a-z' + lower_case_unicode + ']\.\s[a-z' + lower_case_unicode + ']\.', transcript)
+    matches = re.findall(r'[a-z' + lower_case_unicode + r']\.\s[a-z' + lower_case_unicode + r']\.', transcript)
     for match in matches:
         transcript = transcript.replace(match, match.replace('. ', '.'))
 
     # find phrases in quotes
-    with_quotes = re.finditer(r'“[A-Za-z ?]+.*?”', transcript)
-    sentences = []
-    last_idx = 0
-    for m in with_quotes:
-        match = m.group()
-        match_idx = m.start()
-        if last_idx < match_idx:
-            sentences.append(transcript[last_idx:match_idx])
-        sentences.append(match)
-        last_idx = m.end()
-    sentences.append(transcript[last_idx:])
-    sentences = [s.strip() for s in sentences if s.strip()]
+    if split_on_quotes:
+        if language == 'fa':
+            with_quotes = re.finditer(r'«[^»]+»', transcript)
+        else:
+            with_quotes = re.finditer(r'“[A-Za-z ?]+.*?”', transcript)
+        sentences = []
+        last_idx = 0
+        for m in with_quotes:
+            match = m.group()
+            match_idx = m.start()
+            if last_idx < match_idx:
+                sentences.append(transcript[last_idx:match_idx])
+            sentences.append(match)
+            last_idx = m.end()
+        sentences.append(transcript[last_idx:])
+        sentences = [s.strip() for s in sentences if s.strip()]
+    else:
+        sentences = [transcript]
+
 
     # Read and split transcript by utterance (roughly, sentences)
-    split_pattern = f"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
-
-    new_sentences = []
-    for sent in sentences:
-        new_sentences.extend(regex.split(split_pattern, sent))
-    sentences = [s.strip() for s in new_sentences if s.strip()]
+    if language == 'fa':
+        split_pattern = r"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.)\s"
+    else:
+        split_pattern = r"(?<!\w\.\w.)(?<![A-Z{upper_case_unicode}][a-z{lower_case_unicode}]\.)(?<![A-Z{upper_case_unicode}]\.)(?<=\.|\?|\!|\.”|\?”\!”)\s"
+    
+    if split_using_pattern:
+        # Split using the defined regex pattern for sentence boundary detection
+        sentences = [s.strip() for sent in sentences for s in regex.split(split_pattern, sent) for s in s.split("\n") if s.strip()]
+    else:
+        # Split based on new lines if the flag is False
+        sentences = [s.strip() for sent in sentences for s in sent.split("\n") if s.strip()]
 
     def additional_split(sentences, split_on_symbols):
         if len(split_on_symbols) == 0:
@@ -238,9 +320,9 @@ def split_text(
 
         sentences = [s.strip() for s in another_sent_split if s.strip()]
         return sentences
-
-    additional_split_symbols = additional_split_symbols.replace("/s", " ")
-    sentences = additional_split(sentences, additional_split_symbols)
+    if split_using_pattern:
+        additional_split_symbols = additional_split_symbols.replace("/s", " ")
+        sentences = additional_split(sentences, additional_split_symbols)
 
     vocabulary_symbols = []
     for x in vocabulary:
@@ -255,9 +337,50 @@ def split_text(
     if " " in vocab_no_space_with_digits:
         vocab_no_space_with_digits.remove(" ")
 
-    sentences = [
-        s.strip() for s in sentences if len(vocab_no_space_with_digits.intersection(set(s.lower()))) > 0 and s.strip()
-    ]
+
+    if split_on_verbs:
+        def split_sentence_by_verbs(text, tagger, word_min_threshold):
+            tokens = word_tokenize(text)
+            tagged_tokens = tagger.tag(tokens)
+            
+            verb_indices = [
+                i + 1 if (i + 1 < len(tagged_tokens) and tagged_tokens[i + 1][1] == 'PUNCT') else i
+                for i, (_, pos) in enumerate(tagged_tokens)
+                if pos == 'VERB'
+            ]
+
+            if not verb_indices:
+                return [text]
+
+            def clean_token(token, pos):
+                return token.replace('_', ' ').strip() if pos != 'PUNCT' else token
+
+            start_idx = 0
+            result = []
+            for idx in verb_indices:
+                if idx - start_idx > word_min_threshold:
+                    split = tagged_tokens[start_idx:idx+1]
+                    cleaned = [clean_token(tok, pos) for tok, pos in split]
+                    result.append(" ".join(cleaned))
+                    start_idx = idx + 1
+
+            if start_idx < len(tagged_tokens):
+                last_chunk = tagged_tokens[start_idx:]
+                cleaned = [clean_token(tok, pos) for tok, pos in last_chunk]
+                if len(last_chunk) < word_min_threshold and result:
+                    result[-1] += " " + " ".join(cleaned)
+                else:
+                    result.append(" ".join(cleaned))
+
+            return result
+
+        new_sentences = []
+        for sentence in sentences:
+            if len(sentence.split()) > split_on_verbs_max_words:
+                new_sentences.extend(split_sentence_by_verbs(sentence, pos_tagger, split_on_verbs_min_words))
+            else:
+                new_sentences.append(sentence)
+        sentences = [s.strip() for s in new_sentences if s.strip()]
 
     # when no punctuation marks present in the input text, split based on max_length
     if len(sentences) == 1:
@@ -268,6 +391,40 @@ def split_text(
     sentences = [s.strip() for s in sentences if s.strip()]
 
     # save split text with original punctuation and case
+    if language == "fa":
+        normalizer = ParsNorm()
+        
+        new_sentences = []
+        for sentence in sentences:
+            sentence = normalizer.normalize(sentence,
+                                            repeated_punctuation_removal=True,
+                                            symbol_pronounciation=True,
+                                            en_fa_transliteration=True,
+                                            arabic_correction=True, 
+                                            special_chars_removal=True, 
+                                            number_correction=True, 
+                                            punctuation_correction=False, 
+                                            comma_between_numbers_removal=False, 
+                                            english_correction=True,
+                                            convert_time=False, 
+                                            convert_date=False,
+                                            alphabet_correction=False, 
+                                            semi_space_correction=False,
+                                            date_abbrev_replacement=False, 
+                                            persian_label_abbrev_replacement=False,
+                                            law_abbrev_replacement=False, 
+                                            book_abbrev_replacement=False, 
+                                            other_abbrev_replacement=False, 
+                                            number_conversion=False, 
+                                            hazm=False,
+                                            remove_punct=False,
+                                            keep_allowed_chars=False)
+            new_sentences.append(sentence)
+    
+    sentences = [
+        s.strip() for s in new_sentences if len(vocab_no_space_with_digits.intersection(set(s.lower()))) > 0 and s.strip()
+    ]
+    
     out_dir, out_file_name = os.path.split(out_file)
     with open(os.path.join(out_dir, out_file_name[:-4] + "_with_punct.txt"), "w") as f:
         f.write(re.sub(r' +', ' ', "\n".join(sentences)))
@@ -293,6 +450,32 @@ def split_text(
             raise ValueError("Normalization failed, number of sentences does not match.")
         else:
             sentences = sentences_norm
+
+    if language == "fa":
+        sentences = [normalizer.normalize(s,
+                                          punctuation_correction=True, 
+                                          comma_between_numbers_removal=True, 
+                                          convert_time=True, 
+                                          convert_date=True,
+                                          alphabet_correction=True, 
+                                          semi_space_correction=True,
+                                          date_abbrev_replacement=True,
+                                          persian_label_abbrev_replacement=True,
+                                          law_abbrev_replacement=True, 
+                                          book_abbrev_replacement=True, 
+                                          other_abbrev_replacement=True, 
+                                          number_conversion=True, 
+                                          hazm=True,
+                                          remove_punct=True,
+                                          keep_allowed_chars=True,
+                                          english_correction=False,
+                                          repeated_punctuation_removal=False,
+                                          symbol_pronounciation=False,
+                                          en_fa_transliteration=False,
+                                          arabic_correction=False, 
+                                          special_chars_removal=False, 
+                                          number_correction=False)
+                        for s in sentences]
 
     sentences = '\n'.join(sentences)
 
@@ -326,7 +509,8 @@ def split_text(
 
     if do_lower_case:
         sentences = sentences.lower()
-
+    if language == 'fa':
+        sentences = sentences.replace("ۀ", "ه ی")
     symbols_to_remove = ''.join(set(sentences).difference(set(vocabulary_symbols + ["\n", " "])))
     sentences = sentences.translate(''.maketrans(symbols_to_remove, len(symbols_to_remove) * " "))
 
@@ -339,12 +523,18 @@ def split_text(
 if __name__ == "__main__":
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
+    scripts_dir = os.path.dirname(os.path.abspath(__file__))
 
     text_files = []
     if args.in_text:
+        if args.split_on_verbs:
+            tagger = POSTagger(model='../pos_tagger.model')
+        else:
+            tagger = None
         if args.model is None:
             raise ValueError(f"ASR model must be provided to extract vocabulary for text processing")
         elif os.path.exists(args.model):
+            print(f"Restoring model from {args.model}")
             model_cfg = ASRModel.restore_from(restore_path=args.model, return_config=True)
             classpath = model_cfg.target  # original class path
             imported_class = model_utils.import_class_by_path(classpath)  # type: ASRModel
@@ -352,6 +542,7 @@ if __name__ == "__main__":
             asr_model = imported_class.restore_from(restore_path=args.model)  # type: ASRModel
             model_name = os.path.splitext(os.path.basename(args.model))[0]
         else:
+            print(os.listdir(os.path.dirname(args.model)))
             # restore model by name
             asr_model = ASRModel.from_pretrained(model_name=args.model)  # type: ASRModel
             model_name = args.model
@@ -374,18 +565,29 @@ if __name__ == "__main__":
             text_files = glob(f"{args.in_text}/*.txt")
         else:
             text_files.append(args.in_text)
-        for text in text_files:
+        pbar = tqdm(text_files, desc="Processing text files")
+        for text in pbar:
+            pbar.set_description(f"Currently processing: {text}")
             base_name = os.path.basename(text)[:-4]
-            out_text_file = os.path.join(args.output_dir, base_name + ".txt")
-
+            out_text_file = os.path.join(args.output_dir, base_name + ".txt")     
             split_text(
                 text,
                 out_text_file,
+                pos_tagger=tagger,
                 vocabulary=vocabulary,
+                remove_asterisks=args.remove_asterisks,
+                remove_brackets=args.remove_brackets,
+                remove_parentheses=args.remove_parentheses,
+                remove_speaker_labels=args.remove_speaker_labels,
                 language=args.language,
                 max_length=args.max_length,
                 additional_split_symbols=args.additional_split_symbols,
                 use_nemo_normalization=args.use_nemo_normalization,
+                split_using_pattern=args.split_using_pattern,
+                split_on_quotes=args.split_on_quotes,
+                split_on_verbs=args.split_on_verbs,
+                split_on_verbs_min_words=args.split_on_verbs_min_words,
+                split_on_verbs_max_words=args.split_on_verbs_max_words,
                 n_jobs=args.n_jobs,
                 batch_size=args.batch_size,
             )
