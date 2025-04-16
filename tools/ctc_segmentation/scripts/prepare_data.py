@@ -78,6 +78,9 @@ parser.add_argument(
     "--remove_brackets", type=lambda x: x.lower() == 'true', default=True, help="Whether to remove text in square brackets or not"
 )
 parser.add_argument(
+    "--remove_curly_brackets", type=lambda x: x.lower() == 'true', default=False, help="Whether to remove text in curly brackets or not"
+)
+parser.add_argument(
     "--remove_asterisks", type=lambda x: x.lower() == 'true', default=False, help="Whether to remove text in asterisks or not"
 )
 parser.add_argument(
@@ -149,6 +152,7 @@ def split_text(
     pos_tagger,
     language="en",
     remove_brackets: bool = True,
+    remove_curly_brackets: bool = False,
     remove_asterisks: bool = False,
     remove_parentheses: bool = False,
     remove_speaker_labels: bool = False,
@@ -220,7 +224,7 @@ def split_text(
 
     if remove_brackets:
         transcript = re.sub(r'(\[.*?\])', ' ', transcript)
-        # remove text in curly brackets
+    if remove_curly_brackets:
         transcript = re.sub(r'(\{.*?\})', ' ', transcript)
     if remove_asterisks:
         transcript = re.sub(r'(\*.*?\*)', ' ', transcript)
@@ -229,6 +233,11 @@ def split_text(
     
     if remove_speaker_labels:
         transcript = re.sub(r'^\s*\w+\s*: ', '', transcript, flags=re.MULTILINE)
+        transcript = re.sub(r'^\s*[\u0600-\u06FF]+(?:\s*):', '', transcript, flags=re.MULTILINE)
+        transcript = re.sub(r'^\s*-\s*\w+\s*:', '', transcript, flags=re.MULTILINE)
+        transcript = re.sub(r'^\s*-\s*[\u0600-\u06FF]+(?:\s*):', '', text, flags=re.MULTILINE)
+        transcript = re.sub(r'^\s*\+\s*\w+\s*:', '', transcript, flags=re.MULTILINE)
+        transcript = re.sub(r'^\s*\+[\u0600-\u06FF]+(?:\s*):', '', transcript, flags=re.MULTILINE)
 
     lower_case_unicode = ''
     upper_case_unicode = ''
@@ -577,6 +586,7 @@ if __name__ == "__main__":
                 vocabulary=vocabulary,
                 remove_asterisks=args.remove_asterisks,
                 remove_brackets=args.remove_brackets,
+                remove_curly_brackets=args.remove_curly_brackets,
                 remove_parentheses=args.remove_parentheses,
                 remove_speaker_labels=args.remove_speaker_labels,
                 language=args.language,
